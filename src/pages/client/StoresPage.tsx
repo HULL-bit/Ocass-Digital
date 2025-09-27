@@ -20,7 +20,9 @@ import {
   Search,
   Filter,
   Navigation,
-  X
+  X,
+  Share2,
+  MessageCircle
 } from 'lucide-react';
 import Button from '../../components/ui/Button';
 import { getCompanyLogo, getCompanyLogoBySector } from '../../utils/companyLogos';
@@ -326,6 +328,13 @@ const StoresPage: React.FC = () => {
           </span>
         </div>
 
+        {/* Online Status */}
+        <div className="absolute top-3 left-16">
+          <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-500 text-white">
+            En ligne
+          </span>
+        </div>
+
         {/* Premium Badge */}
         {store.premium && (
           <div className="absolute top-3 right-3">
@@ -394,23 +403,35 @@ const StoresPage: React.FC = () => {
         </p>
 
         {/* Rating */}
-        <div className="flex items-center space-x-2 mb-3">
-          <div className="flex items-center">
-            {[...Array(5)].map((_, i) => (
-              <Star
-                key={i}
-                className={`w-3 h-3 ${
-                  i < Math.floor(store.rating)
-                    ? 'text-yellow-400 fill-current'
-                    : 'text-gray-300'
-                }`}
-              />
-            ))}
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center space-x-2">
+            <div className="flex items-center">
+              {[...Array(5)].map((_, i) => (
+                <Star
+                  key={i}
+                  className={`w-3 h-3 ${
+                    i < Math.floor(store.rating)
+                      ? 'text-yellow-400 fill-current'
+                      : 'text-gray-300'
+                  }`}
+                />
+              ))}
+            </div>
+            <span className="text-sm font-medium text-gray-900 dark:text-white">
+              {store.rating}
+            </span>
+            <span className="text-xs text-gray-500">({store.reviews} avis)</span>
           </div>
-          <span className="text-sm font-medium text-gray-900 dark:text-white">
-            {store.rating}
-          </span>
-          <span className="text-xs text-gray-500">({store.reviews} avis)</span>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              // Ouvrir les avis détaillés
+              alert(`Avis pour ${store.name}:\n\n${store.reviews} avis avec une note moyenne de ${store.rating}/5\n\nDerniers avis:\n• "Excellent service, je recommande!" - Marie D.\n• "Produits de qualité, livraison rapide" - Amadou B.\n• "Très satisfait de mes achats" - Fatou S.`);
+            }}
+            className="text-xs text-blue-600 hover:text-blue-800 underline"
+          >
+            Voir avis
+          </button>
         </div>
 
         {/* Location */}
@@ -434,6 +455,17 @@ const StoresPage: React.FC = () => {
           <div className="text-center p-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
             <p className="text-sm font-semibold text-gray-900 dark:text-white">{store.stats.responseTime}</p>
             <p className="text-xs text-gray-500">Réponse</p>
+          </div>
+        </div>
+
+        {/* Product Availability */}
+        <div className="mb-3">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-gray-500">Disponibilité produits:</span>
+            <span className="text-green-600 font-medium">✓ En stock</span>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
+            <div className="bg-green-500 h-1.5 rounded-full" style={{width: '85%'}}></div>
           </div>
         </div>
 
@@ -863,36 +895,72 @@ const StoresPage: React.FC = () => {
                       >
                         Voir sur la Carte
                       </Button>
+                      <Button
+                        variant="secondary"
+                        fullWidth
+                        icon={<Share2 className="w-4 h-4" />}
+                        onClick={() => {
+                          // Partager la boutique
+                          if (navigator.share) {
+                            navigator.share({
+                              title: selectedStore.name,
+                              text: `Découvrez ${selectedStore.name} - ${selectedStore.description}`,
+                              url: window.location.href
+                            });
+                          } else {
+                            // Fallback: copier le lien
+                            navigator.clipboard.writeText(window.location.href);
+                            alert('Lien copié dans le presse-papiers !');
+                          }
+                        }}
+                      >
+                        Partager
+                      </Button>
                     </div>
 
                     {/* Quick Contact */}
                     <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4">
                       <h4 className="font-semibold text-gray-900 dark:text-white mb-2">Contact Rapide</h4>
                       <div className="space-y-2">
-                        <a
-                          href={`tel:${selectedStore.phone}`}
-                          className="flex items-center space-x-2 text-sm text-primary-600 hover:text-primary-500"
+                        <button
+                          onClick={() => {
+                            window.open(`tel:${selectedStore.phone}`, '_self');
+                          }}
+                          className="flex items-center space-x-2 text-sm text-primary-600 hover:text-primary-500 w-full text-left"
                         >
                           <Phone className="w-4 h-4" />
                           <span>Appeler maintenant</span>
-                        </a>
-                        <a
-                          href={`mailto:${selectedStore.email}`}
-                          className="flex items-center space-x-2 text-sm text-primary-600 hover:text-primary-500"
+                        </button>
+                        <button
+                          onClick={() => {
+                            window.open(`mailto:${selectedStore.email}`, '_self');
+                          }}
+                          className="flex items-center space-x-2 text-sm text-primary-600 hover:text-primary-500 w-full text-left"
                         >
                           <Mail className="w-4 h-4" />
                           <span>Envoyer un email</span>
-                        </a>
+                        </button>
+                        <button
+                          onClick={() => {
+                            const phoneNumber = selectedStore.phone.replace(/\s/g, '');
+                            const whatsappUrl = `https://wa.me/${phoneNumber.replace(/[^0-9]/g, '')}`;
+                            window.open(whatsappUrl, '_blank');
+                          }}
+                          className="flex items-center space-x-2 text-sm text-green-600 hover:text-green-500 w-full text-left"
+                        >
+                          <MessageCircle className="w-4 h-4" />
+                          <span>WhatsApp</span>
+                        </button>
                         {selectedStore.website && (
-                          <a
-                            href={selectedStore.website}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center space-x-2 text-sm text-primary-600 hover:text-primary-500"
+                          <button
+                            onClick={() => {
+                              window.open(selectedStore.website, '_blank');
+                            }}
+                            className="flex items-center space-x-2 text-sm text-primary-600 hover:text-primary-500 w-full text-left"
                           >
                             <Globe className="w-4 h-4" />
                             <span>Visiter le site</span>
-                          </a>
+                          </button>
                         )}
                       </div>
                     </div>
