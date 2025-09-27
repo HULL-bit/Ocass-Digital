@@ -213,3 +213,4 @@ cd backend && python scripts/populate_test_data.py
 ## 🎉 **La plateforme est maintenant 100% opérationnelle !**
 
 Connectez-vous avec les comptes de test et explorez toutes les fonctionnalités révolutionnaires !# Ocass-Digital
+# Ocass-Digital
