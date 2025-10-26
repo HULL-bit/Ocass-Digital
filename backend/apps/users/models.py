@@ -35,11 +35,13 @@ class UtilisateurPersonnalise(AbstractUser):
         verbose_name=_("Type d'utilisateur")
     )
     
-    # Entreprise (optionnel pour les clients)
-    entreprise_id = models.UUIDField(
+    # Entreprise (obligatoire pour entrepreneurs, optionnel pour clients)
+    entreprise = models.ForeignKey(
+        'companies.Entreprise',
+        on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        verbose_name=_("ID de l'entreprise")
+        verbose_name=_("Entreprise")
     )
     
     # Informations personnelles étendues
@@ -130,6 +132,12 @@ class UtilisateurPersonnalise(AbstractUser):
         # Générer le secret MFA si activé et pas encore défini
         if self.mfa_actif and not self.secret_mfa:
             self.secret_mfa = pyotp.random_base32()
+        
+        # Validation : les entrepreneurs doivent avoir une entreprise
+        if self.type_utilisateur == 'entrepreneur' and not self.entreprise:
+            from django.core.exceptions import ValidationError
+            raise ValidationError("Un entrepreneur doit être associé à une entreprise.")
+        
         super().save(*args, **kwargs)
     
     @property

@@ -1,6 +1,3 @@
-/**
- * Service API réel pour communication backend Django
- */
 
 const API_BASE_URL = process.env.NODE_ENV === 'production' 
   ? 'https://api.commercial-platform.com/api/v1'
@@ -60,10 +57,11 @@ class ApiService {
     }
   }
 
-  private async request(endpoint: string, options: RequestInit = {}) {
+  private async request(endpoint: string, options: RequestInit = {}, retryCount = 0): Promise<any> {
     const url = `${API_BASE_URL}${endpoint}`;
+    const maxRetries = 3;
     
-    console.log('API Request:', { url, options });
+    console.log('API Request:', { url, options, retryCount });
     
     const config: RequestInit = {
       ...options,
@@ -105,10 +103,24 @@ class ApiService {
       
       if (!response.ok) {
         if (response.status === 401) {
-          // Token expiré
-          this.logout();
-          window.location.href = '/auth/login';
-          throw new Error('Session expirée');
+          // Token expiré - essayer de rafraîchir
+          if (retryCount === 0) {
+            try {
+              await this.refreshToken();
+              return this.request(endpoint, options, 1);
+            } catch (refreshError) {
+              console.error('Token refresh failed:', refreshError);
+              this.logout();
+              // Ne pas rediriger automatiquement pour éviter les boucles
+              // window.location.href = '/auth/login';
+              throw new Error('Session expirée');
+            }
+          } else {
+            this.logout();
+            // Ne pas rediriger automatiquement pour éviter les boucles
+            // window.location.href = '/auth/login';
+            throw new Error('Session expirée');
+          }
         }
         
         let errorMessage = `Erreur ${response.status}`;
@@ -122,7 +134,6 @@ class ApiService {
           errorDetails = errorData;
         } catch (e) {
           console.log('Could not parse error response as JSON');
-          // Ne pas essayer de lire le body si on l'a déjà lu
           errorMessage = `Erreur ${response.status}: ${response.statusText}`;
           errorDetails = { raw: 'Could not parse response' };
         }
@@ -137,6 +148,14 @@ class ApiService {
       return responseData;
     } catch (error) {
       console.error('API Error:', error);
+      
+      // Retry logic pour les erreurs de réseau
+      if (retryCount < maxRetries && (error as any).name === 'TypeError') {
+        console.log(`Retrying request (${retryCount + 1}/${maxRetries})...`);
+        await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1)));
+        return this.request(endpoint, options, retryCount + 1);
+      }
+      
       throw error;
     }
   }
@@ -284,8 +303,45 @@ class ApiService {
     return this.request(`/products/products/?${queryString}`);
   }
 
-  // Products with pagination support - UPDATED
+  // Products with pagination support - OPTIMISÉ
   async getAllProducts() {
+    try {
+      // Utiliser l'endpoint optimisé fast_list
+      const response = await this.request('/products/products/fast_list/');
+      console.log('getAllProducts (optimisé) response:', response);
+      
+      // Vérifier si la réponse est un objet avec results ou directement un tableau
+      let allProducts = [];
+      if (response.results && Array.isArray(response.results)) {
+        allProducts = response.results;
+      } else if (Array.isArray(response)) {
+        allProducts = response;
+      } else {
+        console.warn('Format de réponse inattendu:', response);
+        return [];
+      }
+
+      console.log('getAllProducts (optimisé) final result:', allProducts.length, 'produits');
+      
+      // Mettre en cache les produits pour la synchronisation
+      if (allProducts.length > 0) {
+        localStorage.setItem('cached_products', JSON.stringify({
+          products: allProducts,
+          timestamp: Date.now(),
+          version: '2.0-optimized'
+        }));
+      }
+      
+      return allProducts;
+    } catch (error) {
+      console.error('Erreur lors du chargement des produits optimisés:', error);
+      // Fallback vers l'ancienne méthode si l'endpoint optimisé n'existe pas
+      return await this.getAllProductsFallback();
+    }
+  }
+
+  // Méthode de fallback pour la compatibilité
+  async getAllProductsFallback() {
     let allProducts = [];
     let page = 1;
     let hasNext = true;
@@ -293,15 +349,13 @@ class ApiService {
     while (hasNext) {
       try {
         const response = await this.request(`/products/products/?page=${page}`);
-        console.log('getAllProducts response:', response);
+        console.log('getAllProducts fallback response:', response);
         
-        // Vérifier si la réponse est un objet avec results ou directement un tableau
         if (response.results && Array.isArray(response.results)) {
           allProducts = allProducts.concat(response.results);
           hasNext = !!response.next;
           page++;
         } else if (Array.isArray(response)) {
-          // Si la réponse est directement un tableau
           allProducts = allProducts.concat(response);
           hasNext = false;
         } else {
@@ -314,7 +368,7 @@ class ApiService {
       }
     }
 
-    console.log('getAllProducts final result:', allProducts);
+    console.log('getAllProducts fallback final result:', allProducts);
     return allProducts;
   }
 
@@ -326,50 +380,71 @@ class ApiService {
     try {
       console.log('Creating product with data:', productData);
       
-      // Préparer les données selon le format attendu par Django
-      const processedData = {
-        nom: productData.nom,
-        description_courte: productData.description_courte,
-        description_longue: productData.description_longue,
-        prix_achat: parseFloat(productData.prix_achat),
-        prix_vente: parseFloat(productData.prix_vente),
-        stock_minimum: parseInt(productData.stock_minimum),
-        stock_maximum: parseInt(productData.stock_maximum) || null,
-        sku: productData.sku,
-        code_barre: productData.code_barre || null,
-        slug: productData.slug,
-        categorie: productData.categorie,
-        marque: productData.marque,
-        unite_mesure: productData.unite_mesure,
-        tva_taux: parseFloat(productData.tva_taux) || 18.0,
-        statut: productData.statut || 'actif',
-        vendable: productData.vendable !== undefined ? productData.vendable : true,
-        achetable: productData.achetable !== undefined ? productData.achetable : true,
-        visible_catalogue: productData.visible_catalogue !== undefined ? productData.visible_catalogue : true,
-        dimensions: productData.dimensions || {},
-        couleurs_disponibles: productData.couleurs_disponibles || [],
-        tailles_disponibles: productData.tailles_disponibles || [],
-        point_recommande: productData.point_recommande || 10,
-        poids: productData.poids || null,
-        date_peremption: productData.date_peremption || null,
-        duree_conservation: productData.duree_conservation || null,
-        popularite_score: productData.popularite_score || 0,
-        nombre_vues: productData.nombre_vues || 0,
-        nombre_ventes: productData.nombre_ventes || 0,
-        en_promotion: productData.en_promotion || false,
-        stock_actuel: productData.stock_actuel || 0,
-        stock_disponible: productData.stock_disponible || 0,
-        en_rupture: productData.en_rupture || false,
-        stock_bas: productData.stock_bas || false,
-        images: productData.images || [],
-        variantes: productData.variantes || []
-      };
+      // Utiliser FormData pour supporter les images
+      const formData = new FormData();
+      
+      // Ajouter les champs de base
+      formData.append('nom', productData.nom);
+      formData.append('description_courte', productData.description_courte || 'Description courte');
+      formData.append('description_longue', productData.description_longue || productData.description_courte || 'Description longue');
+      formData.append('prix_achat', productData.prix_achat.toString());
+      formData.append('prix_vente', productData.prix_vente.toString());
+      
+      // Gérer le stock - utiliser stock_initial ou stock selon ce qui est disponible
+      const stockValue = productData.stock_initial || productData.stock || 0;
+      formData.append('stock', stockValue.toString());
+      formData.append('sku', productData.sku);
+      if (productData.code_barre) {
+        formData.append('code_barre', productData.code_barre);
+      }
+      formData.append('slug', productData.slug);
+      formData.append('categorie', productData.categorie);
+      formData.append('marque', productData.marque);
+      formData.append('unite_mesure', productData.unite_mesure || 'piece');
+      formData.append('tva_taux', (productData.tva_taux || 18.0).toString());
+      formData.append('statut', productData.statut || 'actif');
+      formData.append('vendable', (productData.vendable !== undefined ? productData.vendable : true).toString());
+      formData.append('achetable', (productData.achetable !== undefined ? productData.achetable : true).toString());
+      formData.append('visible_catalogue', (productData.visible_catalogue !== undefined ? productData.visible_catalogue : true).toString());
+      
+      // Ajouter les champs optionnels
+      if (productData.dimensions && Object.keys(productData.dimensions).length > 0) {
+        formData.append('dimensions', JSON.stringify(productData.dimensions));
+      }
+      if (productData.couleurs_disponibles && productData.couleurs_disponibles.length > 0) {
+        formData.append('couleurs_disponibles', JSON.stringify(productData.couleurs_disponibles));
+      }
+      if (productData.tailles_disponibles && productData.tailles_disponibles.length > 0) {
+        formData.append('tailles_disponibles', JSON.stringify(productData.tailles_disponibles));
+      }
+      if (productData.point_recommande) {
+        formData.append('point_recommande', productData.point_recommande.toString());
+      }
+      if (productData.poids) {
+        formData.append('poids', productData.poids.toString());
+      }
+      if (productData.date_peremption) {
+        formData.append('date_peremption', productData.date_peremption);
+      }
+      if (productData.duree_conservation) {
+        formData.append('duree_conservation', productData.duree_conservation.toString());
+      }
+      
+      // Ajouter les images si présentes
+      if (productData.images && productData.images.length > 0) {
+        productData.images.forEach((image: File) => {
+          formData.append('images', image);
+        });
+      }
 
-      console.log('Processed product data:', processedData);
+      console.log('FormData prepared for product creation');
 
       return await this.request('/products/products/', {
         method: 'POST',
-        body: JSON.stringify(processedData),
+        body: formData,
+        headers: {
+          // Ne pas définir Content-Type, laissez le navigateur le faire pour FormData
+        }
       });
     } catch (error: any) {
       console.error('Erreur API createProduct:', error);
@@ -547,7 +622,17 @@ class ApiService {
   // Analytics
   async getDashboardMetrics(params: any = {}) {
     const queryString = new URLSearchParams(params).toString();
-    return this.request(`/analytics/dashboard/?${queryString}`);
+    return this.request(`/analytics/dashboard-summary/?${queryString}`);
+  }
+
+  async getEntrepreneurDashboard(params: any = {}) {
+    const queryString = new URLSearchParams(params).toString();
+    return this.request(`/analytics/entrepreneur-dashboard/?${queryString}`);
+  }
+
+  async getClientDashboard(params: any = {}) {
+    const queryString = new URLSearchParams(params).toString();
+    return this.request(`/analytics/client-dashboard/?${queryString}`);
   }
 
   async getSalesAnalytics(params: any = {}) {
@@ -673,6 +758,81 @@ class ApiService {
       method: 'PUT',
       body: JSON.stringify({ configuration: config }),
     });
+  }
+
+  // Synchronisation des données
+  async syncData() {
+    try {
+      console.log('Démarrage de la synchronisation des données...');
+      
+      // Synchroniser les produits
+      const products = await this.getAllProducts();
+      
+      // Synchroniser les clients
+      const customers = await this.getCustomers();
+      
+      // Synchroniser les ventes
+      const sales = await this.getSales();
+      
+      // Mettre à jour le cache global
+      const syncData = {
+        products,
+        customers,
+        sales,
+        timestamp: Date.now(),
+        version: '1.0'
+      };
+      
+      localStorage.setItem('sync_data', JSON.stringify(syncData));
+      
+      console.log('Synchronisation terminée:', syncData);
+      return syncData;
+    } catch (error) {
+      console.error('Erreur lors de la synchronisation:', error);
+      throw error;
+    }
+  }
+
+  // Vérifier la cohérence des données
+  async checkDataConsistency() {
+    try {
+      const cachedData = localStorage.getItem('sync_data');
+      if (!cachedData) {
+        return { consistent: false, reason: 'Aucune donnée en cache' };
+      }
+      
+      const data = JSON.parse(cachedData);
+      const now = Date.now();
+      const cacheAge = now - data.timestamp;
+      
+      // Vérifier si le cache est trop ancien (plus de 5 minutes)
+      if (cacheAge > 5 * 60 * 1000) {
+        return { consistent: false, reason: 'Cache trop ancien', age: cacheAge };
+      }
+      
+      return { consistent: true, data };
+    } catch (error) {
+      console.error('Erreur lors de la vérification de cohérence:', error);
+      return { consistent: false, reason: 'Erreur de parsing' };
+    }
+  }
+
+  // Forcer la synchronisation
+  async forceSync() {
+    try {
+      console.log('Forçage de la synchronisation...');
+      
+      // Nettoyer le cache
+      localStorage.removeItem('sync_data');
+      localStorage.removeItem('cached_products');
+      localStorage.removeItem('cached_companies');
+      
+      // Relancer la synchronisation
+      return await this.syncData();
+    } catch (error) {
+      console.error('Erreur lors du forçage de synchronisation:', error);
+      throw error;
+    }
   }
 }
 

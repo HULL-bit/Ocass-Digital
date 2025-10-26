@@ -1,6 +1,5 @@
 import React, { ReactNode } from 'react';
 import { motion } from 'framer-motion';
-import CountUp from 'react-countup';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 
 interface MetricCardProps {
@@ -149,23 +148,13 @@ const MetricCard: React.FC<MetricCardProps> = ({
           {title}
         </h3>
         
-        <motion.div
-          key={value}
-          initial={{ scale: 1.1 }}
-          animate={{ scale: 1 }}
-          className="text-2xl font-bold text-gray-900 dark:text-white"
-        >
+        <div className="text-2xl font-bold text-gray-900 dark:text-white">
           {loading ? (
             <div className="h-8 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
           ) : (
-            <CountUp
-              end={value}
-              duration={1.5}
-              formattingFn={formatValue}
-              preserveValue
-            />
+            formatValue(value)
           )}
-        </motion.div>
+        </div>
         
         {trend && (
           <p className="text-xs text-gray-500 dark:text-gray-400">

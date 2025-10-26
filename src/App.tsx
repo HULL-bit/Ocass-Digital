@@ -6,6 +6,7 @@ import { store } from './store/store';
 import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { NotificationProvider } from './contexts/NotificationContext';
+import AutoSyncManager from './components/sync/AutoSyncManager';
 import AdminLayout from './layouts/AdminLayout';
 import EntrepreneurLayout from './layouts/EntrepreneurLayout';
 import ClientLayout from './layouts/ClientLayout';
@@ -23,9 +24,10 @@ function App() {
         <ThemeProvider>
           <AuthProvider>
             <NotificationProvider>
-              <Router>
-                <div className="min-h-screen bg-gradient-premium dark:bg-dark-900 transition-all duration-500">
-                  <ParticlesBackground />
+              <AutoSyncManager>
+                <Router>
+                  <div className="min-h-screen bg-gradient-premium dark:bg-dark-900 transition-all duration-500">
+                    <ParticlesBackground />
                   <Routes>
                     {/* Routes d'authentification */}
                     <Route path="/auth/*" element={<AuthLayout />} />
@@ -95,6 +97,7 @@ function App() {
                   },
                 }}
               />
+              </AutoSyncManager>
             </NotificationProvider>
           </AuthProvider>
         </ThemeProvider>

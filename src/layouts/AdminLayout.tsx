@@ -19,14 +19,14 @@ import {
   LogOut,
   Menu,
   X,
-  Plus,
-  Crown
+  Plus
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import DashboardMetrics from '../components/business/Dashboard/DashboardMetrics';
 import UsersManagementPage from '../pages/admin/UsersManagementPage';
 import CompaniesManagementPage from '../pages/admin/CompaniesManagementPage';
+import CompaniesOverview from '../pages/admin/CompaniesOverview';
 import AnalyticsPage from '../pages/admin/AnalyticsPage';
 import SupportPage from '../pages/admin/SupportPage';
 import MonitoringPage from '../pages/admin/MonitoringPage';
@@ -37,6 +37,7 @@ import SecurityPage from '../pages/admin/SecurityPage';
 import CompanyProductsPage from '../pages/admin/CompanyProductsPage';
 import Button from '../components/ui/Button';
 import { useState } from 'react';
+import { getAvatarWithFallback } from '../utils/avatarUtils';
 
 const AdminLayout: React.FC = () => {
   const { user, logout } = useAuth();
@@ -122,9 +123,11 @@ const AdminLayout: React.FC = () => {
             {/* Sidebar Header */}
             <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
               <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-r from-red-500 to-pink-500 flex items-center justify-center">
-                  <Crown className="w-6 h-6 text-white" />
-                </div>
+                <img
+                  src={getAvatarWithFallback(user?.avatar, user?.email || '')}
+                  alt={user?.firstName}
+                  className="w-10 h-10 rounded-xl object-cover border-2 border-primary-500 shadow-lg"
+                />
                 <div>
                   <h1 className="text-lg font-bold gradient-text">Admin Panel</h1>
                   <p className="text-xs text-gray-500 dark:text-gray-400">Contrôle Total</p>
@@ -172,9 +175,9 @@ const AdminLayout: React.FC = () => {
             <div className="p-4 border-t border-gray-200 dark:border-gray-700">
               <div className="flex items-center space-x-3 mb-4">
                 <img
-                  src={user?.avatar || 'https://images.pexels.com/photos/3777943/pexels-photo-3777943.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=2'}
+                  src={getAvatarWithFallback(user?.avatar, user?.email || '')}
                   alt={user?.firstName}
-                  className="w-10 h-10 rounded-full object-cover"
+                  className="w-10 h-10 rounded-full object-cover border-2 border-primary-500 shadow-lg"
                 />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
@@ -187,7 +190,7 @@ const AdminLayout: React.FC = () => {
               </div>
               
               <Button
-                variant="danger"
+                className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white"
                 size="sm"
                 fullWidth
                 icon={<LogOut className="w-4 h-4" />}
@@ -278,6 +281,7 @@ const AdminLayout: React.FC = () => {
             <Route path="/" element={<DashboardMetrics userRole="admin" />} />
             <Route path="/users" element={<UsersManagementPage />} />
             <Route path="/companies" element={<CompaniesManagementPage />} />
+            <Route path="/companies-overview" element={<CompaniesOverview />} />
             <Route path="/analytics" element={<AnalyticsPage />} />
             <Route path="/support" element={<SupportPage />} />
             <Route path="/monitoring" element={<MonitoringPage />} />

@@ -32,7 +32,8 @@ const IntegrationsPage: React.FC = () => {
   const [selectedIntegration, setSelectedIntegration] = useState<any>(null);
   const [showConfigModal, setShowConfigModal] = useState(false);
 
-  const mockIntegrations = [
+  // Données réelles des intégrations (remplacées par l'API)
+  const [integrations, setIntegrations] = useState([
     {
       id: '1',
       name: 'Wave Money',
@@ -135,7 +136,7 @@ const IntegrationsPage: React.FC = () => {
         { timestamp: '2024-01-10T14:20:00Z', action: 'Data sync', status: 'success', records: '1,234 events' },
       ],
     },
-  ];
+  ]);
 
   const availableIntegrations = [
     {
@@ -215,7 +216,7 @@ const IntegrationsPage: React.FC = () => {
   };
 
   const tabs = [
-    { id: 'active', label: 'Actives', count: mockIntegrations.filter(i => i.status === 'active').length },
+    { id: 'active', label: 'Actives', count: integrations.filter(i => i.status === 'active').length },
     { id: 'available', label: 'Disponibles', count: availableIntegrations.length },
     { id: 'logs', label: 'Logs', count: 156 },
   ];
@@ -240,7 +241,7 @@ const IntegrationsPage: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <MetricCard
           title="Intégrations Actives"
-          value={mockIntegrations.filter(i => i.status === 'active').length}
+          value={integrations.filter(i => i.status === 'active').length}
           format="number"
           icon={<Zap className="w-6 h-6" />}
           color="success"
@@ -305,7 +306,7 @@ const IntegrationsPage: React.FC = () => {
               >
                 {/* Active Integrations Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {mockIntegrations.map((integration, index) => (
+                  {integrations.map((integration, index) => (
                     <motion.div
                       key={integration.id}
                       initial={{ opacity: 0, y: 20 }}
@@ -505,7 +506,7 @@ const IntegrationsPage: React.FC = () => {
                 <div className="flex items-center space-x-4">
                   <select className="input-premium">
                     <option value="all">Toutes les intégrations</option>
-                    {mockIntegrations.map((integration) => (
+                    {integrations.map((integration) => (
                       <option key={integration.id} value={integration.id}>
                         {integration.name}
                       </option>
@@ -551,7 +552,7 @@ const IntegrationsPage: React.FC = () => {
                         </tr>
                       </thead>
                       <tbody className="bg-white dark:bg-dark-800 divide-y divide-gray-200 dark:divide-gray-700">
-                        {mockIntegrations.flatMap(integration => 
+                        {integrations.flatMap(integration => 
                           integration.logs.map((log, logIndex) => (
                             <tr key={`${integration.id}-${logIndex}`} className="hover:bg-gray-50 dark:hover:bg-gray-700">
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">

@@ -245,25 +245,12 @@ class Produit(BaseModel):
         verbose_name=_("Taux de TVA (%)")
     )
     
-    # Mesures
+    # Mesures - Simplifié
     unite_mesure = models.CharField(
         max_length=20,
         choices=UNITES_MESURE,
         default='piece',
         verbose_name=_("Unité de mesure")
-    )
-    poids = models.DecimalField(
-        max_digits=8,
-        decimal_places=3,
-        null=True,
-        blank=True,
-        validators=[MinValueValidator(0)],
-        verbose_name=_("Poids (kg)")
-    )
-    dimensions = models.JSONField(
-        default=dict,
-        help_text=_("Dimensions en cm: {\"longueur\": 0, \"largeur\": 0, \"hauteur\": 0}"),
-        verbose_name=_("Dimensions")
     )
     
     # Variantes
@@ -278,10 +265,8 @@ class Produit(BaseModel):
         verbose_name=_("Tailles disponibles")
     )
     
-    # Stock
-    stock_minimum = models.PositiveIntegerField(default=0, verbose_name=_("Stock minimum"))
-    stock_maximum = models.PositiveIntegerField(default=1000, verbose_name=_("Stock maximum"))
-    point_recommande = models.PositiveIntegerField(default=10, verbose_name=_("Point de recommande"))
+    # Stock - Simplifié
+    stock = models.PositiveIntegerField(default=0, verbose_name=_("Stock"))
     
     # Gestion des péremptions
     date_peremption = models.DateField(null=True, blank=True, verbose_name=_("Date de péremption"))
@@ -354,6 +339,17 @@ class Produit(BaseModel):
         return f"{self.nom} ({self.sku})"
     
     def save(self, *args, **kwargs):
+        # Générer le slug automatiquement s'il n'existe pas
+        if not self.slug and self.nom:
+            from django.utils.text import slugify
+            base_slug = slugify(self.nom)
+            slug = base_slug
+            counter = 1
+            while Produit.objects.filter(slug=slug).exists():
+                slug = f"{base_slug}-{counter}"
+                counter += 1
+            self.slug = slug
+        
         # Générer le QR code automatiquement
         if not self.qr_code and self.sku:
             self.generer_qr_code()
@@ -388,33 +384,18 @@ class Produit(BaseModel):
     
     @property
     def stock_actuel(self):
-        """Retourne le stock actuel total."""
-        from apps.inventory.models import Stock
-        return Stock.objects.filter(produit=self).aggregate(
-            total=models.Sum('quantite_physique')
-        )['total'] or 0
+        """Retourne le stock actuel."""
+        return self.stock
     
     @property
     def stock_disponible(self):
-        """Retourne le stock disponible (physique - réservé)."""
-        from apps.inventory.models import Stock
-        stocks = Stock.objects.filter(produit=self).aggregate(
-            physique=models.Sum('quantite_physique'),
-            reserve=models.Sum('quantite_reservee')
-        )
-        physique = stocks['physique'] or 0
-        reserve = stocks['reserve'] or 0
-        return physique - reserve
+        """Retourne le stock disponible."""
+        return self.stock
     
     @property
     def en_rupture(self):
         """Vérifie si le produit est en rupture de stock."""
-        return self.stock_disponible <= 0
-    
-    @property
-    def stock_bas(self):
-        """Vérifie si le stock est bas."""
-        return self.stock_disponible <= self.stock_minimum
+        return self.stock <= 0
     
     def incrementer_vues(self):
         """Incrémente le nombre de vues."""

@@ -9,7 +9,7 @@ from rest_framework.pagination import PageNumberPagination
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from .models import Entreprise, PlanAbonnement
-from .serializers import EntrepriseSerializer, PlanAbonnementSerializer
+from .serializers import EntrepriseSerializer, EntrepriseCreateSerializer, PlanAbonnementSerializer
 from apps.core.permissions import IsAdminOnly
 
 
@@ -30,6 +30,11 @@ class EntrepriseViewSet(viewsets.ModelViewSet):
     search_fields = ['nom', 'email', 'ville', 'region']
     ordering_fields = ['nom', 'date_creation', 'chiffre_affaires_annuel']
     pagination_class = EntreprisePagination
+    
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return EntrepriseCreateSerializer
+        return EntrepriseSerializer
     
     def get_permissions(self):
         """
@@ -54,7 +59,7 @@ class EntrepriseViewSet(viewsets.ModelViewSet):
         if user.type_utilisateur == 'admin':
             return Entreprise.objects.all()
         elif user.type_utilisateur == 'entrepreneur':
-            return Entreprise.objects.filter(id=user.entreprise.id)
+            return Entreprise.objects.filter(id=user.entreprise.id) if user.entreprise else Entreprise.objects.none()
         else:
             return Entreprise.objects.filter(statut='actif')
     

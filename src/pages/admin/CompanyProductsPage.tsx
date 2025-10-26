@@ -104,7 +104,10 @@ const CompanyProductsPage: React.FC<CompanyProductsProps> = () => {
       
       const companyProducts = allProducts.filter((p: any) => {
         console.log(`Product ${p.nom} - entreprise: ${p.entreprise}, companyId: ${companyId}`);
-        return p.entreprise === companyId;
+        // Vérifier si p.entreprise est un objet avec un id ou directement l'id
+        const productCompanyId = typeof p.entreprise === 'object' ? p.entreprise?.id : p.entreprise;
+        console.log(`Product ${p.nom} - productCompanyId: ${productCompanyId}, companyId: ${companyId}`);
+        return productCompanyId === companyId || productCompanyId === (companyId ? parseInt(companyId) : null) || productCompanyId === companyId?.toString();
       });
       
       console.log('Filtered products count:', companyProducts.length);

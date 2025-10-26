@@ -69,13 +69,11 @@ def register_view(request):
     """Inscription avec validation avancée."""
     data = request.data.copy()
     
-    # Gestion des données entreprise pour entrepreneurs (simplifiée)
+    # Gestion des données entreprise pour entrepreneurs
     if data.get('type_utilisateur') == 'entrepreneur':
-        # Pour l'instant, on ne crée pas d'entreprise automatiquement
-        # L'entrepreneur pourra créer son entreprise plus tard
-        if 'entreprise' in data:
-            data.pop('entreprise')  # Supprimer les données entreprise
-        data['entreprise_id'] = None  # Pas d'entreprise pour l'instant
+        # Les données d'entreprise sont maintenant gérées dans le serializer
+        # Pas besoin de les supprimer ici
+        pass
     
     serializer = RegisterSerializer(data=data)
     

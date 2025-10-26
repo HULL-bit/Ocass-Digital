@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import apiService from '../../services/api/realApi';
+import useCart from '../../hooks/useCart';
 import { 
   ShoppingCart, 
   Plus, 
@@ -26,8 +27,26 @@ import {
 import Button from '../../components/ui/Button';
 
 const CartPage: React.FC = () => {
-  const [cartItems, setCartItems] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Utiliser le hook du panier
+  const { 
+    cartItems, 
+    cartSummary, 
+    updateQuantity, 
+    removeFromCart, 
+    clearCart 
+  } = useCart();
+  
+  // Protection contre les valeurs undefined
+  const safeCartSummary = cartSummary || {
+    items: [],
+    totalItems: 0,
+    subtotal: 0,
+    totalSavings: 0,
+    shipping: 0,
+    total: 0
+  };
+  
+  const [loading, setLoading] = useState(false);
   const [promoCode, setPromoCode] = useState('');
   const [appliedPromo, setAppliedPromo] = useState<any>(null);
   const [selectedAddress, setSelectedAddress] = useState('default');
@@ -52,151 +71,9 @@ const CartPage: React.FC = () => {
     },
   ];
 
-  // Charger les articles du panier depuis l'API
-  useEffect(() => {
-    loadCartItems();
-  }, []);
+  // Le panier est maintenant géré par le hook useCart
 
-  // Écouter les changements du localStorage pour synchroniser le panier
-  useEffect(() => {
-    const handleStorageChange = () => {
-      const savedCart = localStorage.getItem('cart');
-      if (savedCart) {
-        const cartData = JSON.parse(savedCart);
-        // Normaliser les données du panier
-        const normalizedItems = cartData.map(normalizeCartItem);
-        setCartItems(normalizedItems);
-      }
-    };
-
-    // Écouter les changements du localStorage
-    window.addEventListener('storage', handleStorageChange);
-    
-    // Écouter les événements personnalisés pour les changements dans le même onglet
-    window.addEventListener('cartUpdated', handleStorageChange);
-
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      window.removeEventListener('cartUpdated', handleStorageChange);
-    };
-  }, []);
-
-  // Fonction pour normaliser les données du panier
-  const normalizeCartItem = (item: any) => {
-    return {
-      id: item.id || item.nom,
-      name: item.name || item.nom || 'Produit sans nom',
-      description: item.description || item.description_courte || item.description_longue || 'Aucune description',
-      price: parseFloat(item.price || item.prix_vente || 0),
-      originalPrice: parseFloat(item.originalPrice || item.prix_achat || item.price || item.prix_vente || 0),
-      quantity: item.quantity || 1,
-      image: item.image || item.images?.[0] || 'https://via.placeholder.com/200x200',
-      seller: item.seller || {
-        name: item.company || item.entreprise?.nom || 'Vendeur inconnu',
-        rating: 4.5,
-        verified: true,
-      },
-      shipping: item.shipping || {
-        free: true,
-        time: '24-48h',
-      },
-      inStock: item.inStock !== undefined ? item.inStock : (item.stock || item.stock_actuel || 0) > 0,
-      maxQuantity: item.maxQuantity || item.stock || item.stock_actuel || 10,
-      selectedColor: item.selectedColor || item.couleur || '',
-      selectedSize: item.selectedSize || item.taille || '',
-      category: item.category || item.categorie?.nom || 'Autre',
-      brand: item.brand || item.marque_nom || item.marque || 'Marque inconnue',
-    };
-  };
-
-  const loadCartItems = async () => {
-    try {
-      setLoading(true);
-      
-      // Charger le panier depuis le localStorage
-      const savedCart = localStorage.getItem('cart');
-      if (savedCart) {
-        const cartData = JSON.parse(savedCart);
-        // Normaliser les données du panier
-        const normalizedItems = cartData.map(normalizeCartItem);
-        setCartItems(normalizedItems);
-      } else {
-        // Si aucun panier n'est sauvegardé, utiliser des données mockées par défaut
-        const mockCartItems = [
-          {
-            id: '1',
-            name: 'iPhone 15 Pro',
-            description: 'Smartphone avec puce A17 Pro',
-            price: 850000,
-            originalPrice: 950000,
-            quantity: 1,
-            image: 'https://images.pexels.com/photos/788946/pexels-photo-788946.jpeg?auto=compress&cs=tinysrgb&w=200&h=200&dpr=2',
-            seller: {
-              name: 'TechSolutions Sénégal',
-              rating: 4.9,
-              verified: true,
-            },
-            shipping: {
-              free: true,
-              time: '24-48h',
-            },
-            inStock: true,
-            maxQuantity: 15,
-          },
-          {
-            id: '2',
-            name: 'Robe Élégante Africaine',
-            description: 'Robe traditionnelle en wax premium',
-            price: 35000,
-            originalPrice: 45000,
-            quantity: 2,
-            image: 'https://images.pexels.com/photos/1536619/pexels-photo-1536619.jpeg?auto=compress&cs=tinysrgb&w=200&h=200&dpr=2',
-            seller: {
-              name: 'Boutique Marie Diallo',
-              rating: 4.7,
-              verified: true,
-            },
-            shipping: {
-              free: false,
-              cost: 2500,
-              time: '2-3 jours',
-            },
-            inStock: true,
-            maxQuantity: 25,
-            selectedColor: 'Bleu Royal',
-            selectedSize: 'M',
-          },
-          {
-            id: '3',
-            name: 'Air Jordan 1 Retro',
-            description: 'Baskets iconiques en cuir premium',
-            price: 145000,
-            quantity: 1,
-            image: 'https://images.pexels.com/photos/2529148/pexels-photo-2529148.jpeg?auto=compress&cs=tinysrgb&w=200&h=200&dpr=2',
-            seller: {
-              name: 'Boutique Marie Diallo',
-              rating: 4.7,
-              verified: true,
-            },
-            shipping: {
-              free: true,
-              time: '24-48h',
-            },
-            inStock: true,
-            maxQuantity: 12,
-            selectedColor: 'Chicago',
-            selectedSize: '42',
-            },
-          ];
-        setCartItems(mockCartItems);
-      }
-    } catch (error) {
-      console.error('Erreur lors du chargement du panier:', error);
-      setCartItems([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Les fonctions de gestion du panier sont maintenant dans le hook useCart
 
   const promoCodes = [
     { code: 'WELCOME10', discount: 10, type: 'percentage', description: 'Réduction 10% nouveaux clients' },
@@ -204,36 +81,7 @@ const CartPage: React.FC = () => {
     { code: 'LIVRAISON', discount: 2500, type: 'fixed', description: 'Livraison gratuite' },
   ];
 
-  const updateQuantity = (itemId: string, newQuantity: number) => {
-    if (newQuantity <= 0) {
-      removeItem(itemId);
-      return;
-    }
-
-    setCartItems(prev => {
-      const updatedItems = prev.map(item => 
-        item.id === itemId 
-          ? { ...item, quantity: Math.min(newQuantity, item.maxQuantity) }
-          : item
-      );
-      // Sauvegarder dans le localStorage
-      localStorage.setItem('cart', JSON.stringify(updatedItems));
-      // Déclencher un événement personnalisé
-      window.dispatchEvent(new CustomEvent('cartUpdated'));
-      return updatedItems;
-    });
-  };
-
-  const removeItem = (itemId: string) => {
-    setCartItems(prev => {
-      const updatedItems = prev.filter(item => item.id !== itemId);
-      // Sauvegarder dans le localStorage
-      localStorage.setItem('cart', JSON.stringify(updatedItems));
-      // Déclencher un événement personnalisé
-      window.dispatchEvent(new CustomEvent('cartUpdated'));
-      return updatedItems;
-    });
-  };
+  // Les fonctions updateQuantity et removeItem sont maintenant dans le hook useCart
 
   const moveToWishlist = (itemId: string) => {
     console.log('Move to wishlist:', itemId);
@@ -245,8 +93,9 @@ const CartPage: React.FC = () => {
     if (promo) {
       setAppliedPromo(promo);
       setPromoCode('');
+      alert(`Code promo "${promo.code}" appliqué ! Réduction de ${promo.discount * 100}% accordée.`);
     } else {
-      alert('Code promo invalide');
+      alert('Code promo invalide. Essayez: SAVE10, WELCOME, ou LOYALTY');
     }
   };
 
@@ -254,25 +103,10 @@ const CartPage: React.FC = () => {
     setAppliedPromo(null);
   };
 
-  const calculateSubtotal = () => {
-    return cartItems.reduce((sum, item) => sum + ((item.price || 0) * (item.quantity || 1)), 0);
-  };
-
-  const calculateSavings = () => {
-    return cartItems.reduce((sum, item) => {
-      const originalTotal = (item.originalPrice || item.price || 0) * (item.quantity || 1);
-      const currentTotal = (item.price || 0) * (item.quantity || 1);
-      return sum + (originalTotal - currentTotal);
-    }, 0);
-  };
-
-  const calculateShipping = () => {
-    const hasNonFreeShipping = cartItems.some(item => !item.shipping?.free);
-    if (!hasNonFreeShipping) return 0;
-    
-    // Prendre le coût de livraison le plus élevé
-    return Math.max(...cartItems.map(item => item.shipping?.cost || 0));
-  };
+  // Utiliser les données du hook useCart
+  const calculateSubtotal = () => safeCartSummary.subtotal;
+  const calculateSavings = () => safeCartSummary.totalSavings;
+  const calculateShipping = () => safeCartSummary.shipping;
 
   const calculatePromoDiscount = () => {
     if (!appliedPromo) return 0;
@@ -305,12 +139,7 @@ const CartPage: React.FC = () => {
           <Button 
             variant="secondary" 
             icon={<Trash2 className="w-4 h-4" />}
-            onClick={() => {
-              setCartItems([]);
-              localStorage.removeItem('cart');
-              // Déclencher un événement personnalisé
-              window.dispatchEvent(new CustomEvent('cartUpdated'));
-            }}
+            onClick={() => clearCart()}
           >
             Vider le Panier
           </Button>
@@ -422,7 +251,7 @@ const CartPage: React.FC = () => {
                             <Heart className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => removeItem(item.id)}
+                            onClick={() => removeFromCart(item.id)}
                             className="p-2 text-gray-400 hover:text-red-500 transition-colors"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -805,13 +634,33 @@ const CartPage: React.FC = () => {
                     variant="primary"
                     fullWidth
                     icon={<CheckCircle className="w-4 h-4" />}
-                    onClick={() => {
-                      alert('Commande passée avec succès !');
-                      setShowCheckout(false);
-                      setCartItems([]);
-                      localStorage.removeItem('cart');
-                      // Déclencher un événement personnalisé
-                      window.dispatchEvent(new CustomEvent('cartUpdated'));
+                    onClick={async () => {
+                      try {
+                        // Créer une commande via l'API
+                        const orderData = {
+                          items: cartItems.map(item => ({
+                            product_id: item.id,
+                            quantity: item.quantity,
+                            price: item.price
+                          })),
+                          total: calculateTotal(),
+                          discount: appliedPromo ? appliedPromo.discount : 0,
+                          promo_code: appliedPromo ? appliedPromo.code : null,
+                          shipping_address: shippingAddress,
+                          payment_method: selectedPaymentMethod
+                        };
+                        
+                        // Simuler la création de commande
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                        
+                        alert('Commande passée avec succès ! Vous recevrez un email de confirmation.');
+                        setShowCheckout(false);
+                        clearCart();
+                        setAppliedPromo(null);
+                      } catch (error) {
+                        console.error('Erreur lors de la commande:', error);
+                        alert('Erreur lors de la finalisation de la commande');
+                      }
                     }}
                   >
                     Confirmer

@@ -26,6 +26,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import Button from '../../components/ui/Button';
 import AnimatedForm from '../../components/forms/AnimatedForm';
 import * as yup from 'yup';
+import { getAvatarWithFallback } from '../../utils/avatarUtils';
 
 const ProfilePage: React.FC = () => {
   const { user, updateUser } = useAuth();
@@ -202,7 +203,7 @@ const ProfilePage: React.FC = () => {
             <div className="text-center">
               <div className="relative inline-block mb-4">
                 <img
-                  src={user?.avatar || 'https://images.pexels.com/photos/3992656/pexels-photo-3992656.png?auto=compress&cs=tinysrgb&w=200&h=200&dpr=2'}
+                  src={getAvatarWithFallback(user?.avatar, user?.email || '')}
                   alt={user?.firstName}
                   className="w-24 h-24 rounded-full object-cover border-4 border-primary-500"
                 />

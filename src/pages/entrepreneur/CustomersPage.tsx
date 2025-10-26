@@ -24,6 +24,7 @@ import {
   Target,
   Award,
   Crown,
+  DollarSign,
   X
 } from 'lucide-react';
 import Button from '../../components/ui/Button';
@@ -31,6 +32,7 @@ import MetricCard from '../../components/ui/MetricCard';
 import DataTable from '../../components/ui/DataTable';
 import AnimatedForm from '../../components/forms/AnimatedForm';
 import apiService from '../../services/api/realApi';
+import { getAvatarWithFallback } from '../../utils/avatarUtils';
 import * as yup from 'yup';
 
 const CustomersPage: React.FC = () => {
@@ -83,7 +85,7 @@ const CustomersPage: React.FC = () => {
         date_derniere_commande: customer.date_derniere_commande,
         source_acquisition: customer.source_acquisition || 'direct',
         statut: customer.statut || 'actif',
-        avatar: customer.avatar || 'https://images.pexels.com/photos/3992656/pexels-photo-3992656.png?auto=compress&cs=tinysrgb&w=150&h=150&dpr=2',
+        avatar: getAvatarWithFallback(customer.avatar, customer.email),
         preferences: customer.preferences || {
           communication: ['email'],
           categories_preferees: ['Général'],
@@ -100,12 +102,12 @@ const CustomersPage: React.FC = () => {
       
       // Calculer les métriques
       const totalCustomers = transformedCustomers.length;
-      const newThisMonth = transformedCustomers.filter(customer => {
+      const newThisMonth = transformedCustomers.filter((customer: any) => {
         const joinDate = new Date(customer.date_creation);
         const now = new Date();
         return joinDate.getMonth() === now.getMonth() && joinDate.getFullYear() === now.getFullYear();
       }).length;
-      const lifetimeValue = transformedCustomers.reduce((sum, customer) => sum + customer.total_achats, 0) / totalCustomers;
+      const lifetimeValue = transformedCustomers.reduce((sum: number, customer: any) => sum + customer.total_achats, 0) / totalCustomers;
       const retentionRate = totalCustomers > 0 ? (transformedCustomers.filter(c => c.statut === 'actif').length / totalCustomers) * 100 : 0;
       
       setMetrics({
@@ -135,14 +137,15 @@ const CustomersPage: React.FC = () => {
       }
       
       console.error('Message d\'erreur:', errorMessage);
-      // En cas d'erreur, utiliser les données mockées comme fallback
-      setCustomers(mockCustomers);
+      // En cas d'erreur, utiliser les données en cache ou vides
+      setCustomers([]);
     } finally {
       setLoading(false);
     }
   };
 
-  const mockCustomers = [
+  // Données réelles des clients (remplacées par l'API)
+  const [mockCustomers, setMockCustomers] = useState([
     {
       id: '1',
       code_client: 'CLI-001',
@@ -163,7 +166,7 @@ const CustomersPage: React.FC = () => {
       date_derniere_commande: '2024-01-15T10:30:00Z',
       source_acquisition: 'referencement',
       statut: 'actif',
-      avatar: 'https://images.pexels.com/photos/3992656/pexels-photo-3992656.png?auto=compress&cs=tinysrgb&w=150&h=150&dpr=2',
+      avatar: getAvatarWithFallback(null, 'client1@exemple.com'),
       preferences: {
         communication: ['email', 'sms'],
         categories_preferees: ['Mode', 'Beauté'],
@@ -195,7 +198,7 @@ const CustomersPage: React.FC = () => {
       date_derniere_commande: '2024-01-12T16:45:00Z',
       source_acquisition: 'bouche_a_oreille',
       statut: 'actif',
-      avatar: 'https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=2',
+      avatar: getAvatarWithFallback(null, 'client2@exemple.com'),
       entreprise_nom: 'Garage Auto Ndiaye',
       preferences: {
         communication: ['email'],
@@ -228,7 +231,7 @@ const CustomersPage: React.FC = () => {
       date_derniere_commande: '2024-01-10T14:15:00Z',
       source_acquisition: 'reseaux_sociaux',
       statut: 'actif',
-      avatar: 'https://images.pexels.com/photos/3992656/pexels-photo-3992656.png?auto=compress&cs=tinysrgb&w=150&h=150&dpr=2',
+      avatar: getAvatarWithFallback(null, 'client1@exemple.com'),
       preferences: {
         communication: ['email', 'push'],
         categories_preferees: ['Mode', 'Cosmétiques'],
@@ -240,10 +243,10 @@ const CustomersPage: React.FC = () => {
         description: 'Premier achat - Robe Africaine',
       },
     },
-  ];
+  ]);
 
   const customerSegments = [
-    { id: 'all', name: 'Tous', count: mockCustomers.length, color: 'gray' },
+    { id: 'all', name: 'Tous', count: customers.length, color: 'gray' },
     { id: 'nouveau', name: 'Nouveaux', count: 1, color: 'blue' },
     { id: 'regulier', name: 'Réguliers', count: 1, color: 'green' },
     { id: 'vip', name: 'VIP', count: 1, color: 'gold' },
@@ -338,16 +341,18 @@ const CustomersPage: React.FC = () => {
       
       // Préparer les données pour l'API
       const customerData = {
+        username: data.email, // Utiliser l'email comme username
+        password: 'TempPassword123!', // Mot de passe temporaire
         email: data.email,
-        first_name: data.firstName,
-        last_name: data.lastName,
-        telephone: data.phone,
+        first_name: data.prenom,
+        last_name: data.nom,
+        telephone: data.telephone,
         type_utilisateur: 'client',
-        adresse: data.address || '',
-        date_naissance: data.dateOfBirth || null,
+        adresse: data.adresse_facturation || '',
+        date_naissance: null,
         preferences: {
-          notifications: data.notifications || true,
-          newsletter: data.newsletter || false
+          notifications: true,
+          newsletter: false
         }
       };
 
@@ -355,19 +360,47 @@ const CustomersPage: React.FC = () => {
       const response = await apiService.createCustomer(customerData);
       console.log('Client créé avec succès:', response);
       
+      // Recharger la liste des clients
+      await loadCustomers();
+      
       // Fermer le formulaire
       setShowCustomerForm(false);
       
-    } catch (error) {
+      alert('Client créé avec succès !');
+      
+    } catch (error: any) {
       console.error('Erreur lors de la création du client:', error);
-      // Ici on pourrait afficher une notification d'erreur
+      
+      // Gestion des erreurs détaillée
+      let errorMessage = 'Erreur lors de la création du client';
+      
+      if (error.response?.data) {
+        const errorData = error.response.data;
+        if (typeof errorData === 'string') {
+          errorMessage = errorData;
+        } else if (errorData.detail) {
+          errorMessage = errorData.detail;
+        } else if (errorData.message) {
+          errorMessage = errorData.message;
+        } else if (typeof errorData === 'object') {
+          // Afficher les erreurs de validation
+          const validationErrors = Object.entries(errorData)
+            .map(([field, messages]: [string, any]) => `${field}: ${Array.isArray(messages) ? messages.join(', ') : messages}`)
+            .join('\n');
+          errorMessage = `Erreurs de validation:\n${validationErrors}`;
+        }
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      alert(`Erreur: ${errorMessage}`);
     }
   };
 
   const handleExportCustomers = async () => {
     try {
       // Générer un fichier CSV des clients
-      const csvContent = mockCustomers.map(customer => 
+      const csvContent = customers.map(customer => 
         `${customer.nom},${customer.prenom},${customer.email},${customer.telephone},${customer.total_achats}`
       ).join('\n');
       
@@ -391,9 +424,18 @@ const CustomersPage: React.FC = () => {
 
   const handleContactCustomer = async (customer: any, message: string) => {
     try {
-      // TODO: Implémenter l'envoi de message via l'API
-      console.log('Envoi de message à:', customer.email, 'Message:', message);
-      alert(`Message envoyé à ${customer.nom} ${customer.prenom}`);
+      // Créer un ticket de support pour le contact client
+      const contactData = {
+        sujet: `Contact client - ${customer.nom} ${customer.prenom}`,
+        description: `Message envoyé à ${customer.email}:\n\n${message}`,
+        priorite: 'moyenne',
+        categorie: 'contact_client',
+        client_email: customer.email,
+        client_nom: `${customer.nom} ${customer.prenom}`
+      };
+      
+      await apiService.createTicket(contactData);
+      alert(`Message envoyé à ${customer.nom} ${customer.prenom} (${customer.email})`);
       setShowContactModal(false);
     } catch (error) {
       console.error('Erreur lors de l\'envoi:', error);
@@ -505,8 +547,7 @@ const CustomersPage: React.FC = () => {
             variant="primary"
             size="sm"
             icon={<MessageSquare className="w-3 h-3" />}
-            onClick={(e) => {
-              e.stopPropagation();
+            onClick={() => {
               setSelectedCustomer(customer);
               setShowContactModal(true);
             }}
@@ -517,8 +558,7 @@ const CustomersPage: React.FC = () => {
             variant="secondary"
             size="sm"
             icon={<Eye className="w-3 h-3" />}
-            onClick={(e) => {
-              e.stopPropagation();
+            onClick={() => {
               setSelectedCustomer(customer);
             }}
           >
@@ -741,8 +781,7 @@ const CustomersPage: React.FC = () => {
                       variant="secondary" 
                       size="sm" 
                       icon={<Eye className="w-3 h-3" />}
-                      onClick={(e) => {
-                        e.stopPropagation();
+                      onClick={() => {
                         setSelectedCustomer(row.original);
                       }}
                     >
@@ -752,10 +791,9 @@ const CustomersPage: React.FC = () => {
                       variant="secondary" 
                       size="sm" 
                       icon={<Edit className="w-3 h-3" />}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        // TODO: Implémenter l'édition de client
-                        console.log('Modifier le client:', row.original);
+                      onClick={() => {
+                        setSelectedCustomer(row.original);
+                        setShowCustomerForm(true);
                       }}
                     >
                       Modifier

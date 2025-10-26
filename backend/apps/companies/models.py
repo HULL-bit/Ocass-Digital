@@ -92,6 +92,8 @@ class Entreprise(BaseModel):
     plan_abonnement = models.ForeignKey(
         PlanAbonnement,
         on_delete=models.PROTECT,
+        null=True,
+        blank=True,
         verbose_name=_("Plan d'abonnement")
     )
     date_debut_abonnement = models.DateTimeField(auto_now_add=True, verbose_name=_("Début d'abonnement"))

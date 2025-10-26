@@ -24,6 +24,9 @@ import {
 } from 'lucide-react';
 import Button from '../../components/ui/Button';
 import apiService from '../../services/api/realApi';
+import clientApiService from '../../services/api/clientApi';
+import useDataSync from '../../hooks/useDataSync';
+import useCart from '../../hooks/useCart';
 import { getCompanyLogo } from '../../utils/companyLogos';
 import { getProductImage, getProductImages } from '../../utils/productImages';
 
@@ -38,13 +41,32 @@ const CatalogPage: React.FC = () => {
   const [selectedColor, setSelectedColor] = useState('');
   const [selectedSize, setSelectedSize] = useState('');
   const [quantity, setQuantity] = useState(1);
+  // Utiliser le hook de synchronisation des données (automatique)
+  const { products: syncedProducts, companies: syncedCompanies } = useDataSync();
+  
+  // Protection contre les valeurs undefined
+  const safeSyncedProducts = syncedProducts || [];
+  const safeSyncedCompanies = syncedCompanies || [];
+  
+  // Utiliser le hook du panier
+  const { 
+    cartItems, 
+    cartSummary, 
+    addToCart, 
+    updateQuantity, 
+    removeFromCart, 
+    isInCart, 
+    getItemQuantity 
+  } = useCart();
+  
+  // Métriques réelles du client
+  const [clientMetrics, setClientMetrics] = useState<any>(null);
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [categories, setCategories] = useState<any[]>([]);
   const [companies, setCompanies] = useState<any[]>([]);
   const [filteredProducts, setFilteredProducts] = useState<any[]>([]);
   const [favorites, setFavorites] = useState<Set<number>>(new Set());
-  const [cart, setCart] = useState<any[]>([]);
   
   // Nouveaux états pour le filtrage et la pagination
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 1000000]);
@@ -54,25 +76,54 @@ const CatalogPage: React.FC = () => {
   const [showFilters, setShowFilters] = useState(false);
 
 
+  // Synchroniser les données avec le service centralisé
+  useEffect(() => {
+    if (safeSyncedProducts.length > 0) {
+      setProducts(safeSyncedProducts);
+      setFilteredProducts(safeSyncedProducts);
+      updateCategoryCounts(safeSyncedProducts);
+    }
+  }, [safeSyncedProducts]);
+
+  useEffect(() => {
+    if (safeSyncedCompanies.length > 0) {
+      setCompanies(safeSyncedCompanies);
+    }
+  }, [safeSyncedCompanies]);
+
+  // Charger les données réelles du client
+  useEffect(() => {
+    const loadClientData = async () => {
+      try {
+        const metrics = await clientApiService.getClientMetrics();
+        setClientMetrics(metrics);
+      } catch (error) {
+        console.error('Erreur lors du chargement des métriques client:', error);
+      }
+    };
+
+    loadClientData();
+  }, []);
+
   // Charger les produits depuis l'API
   useEffect(() => {
-    // Initialiser le filtre par entreprise depuis l'URL
-    const companyFromUrl = searchParams.get('company');
-    if (companyFromUrl) {
-      setSelectedCompany(companyFromUrl);
-    }
-    
     loadProducts();
     loadCategories();
-    loadCompanies();
     loadFavorites();
-    loadCart();
   }, [searchParams]);
 
   // Charger les produits quand les filtres changent
   useEffect(() => {
     loadProducts();
-  }, [searchTerm, selectedCategory, selectedCompany, priceRange, sortBy, currentPage]);
+  }, [searchTerm, selectedCategory, priceRange, sortBy, currentPage]);
+
+  // Re-filtrer les produits côté client
+  useEffect(() => {
+    if (products && products.length > 0) {
+      setFilteredProducts(products);
+      updateCategoryCounts(products);
+    }
+  }, [products]);
 
   const loadProducts = async () => {
     try {
@@ -90,9 +141,6 @@ const CatalogPage: React.FC = () => {
         params.append('categorie', selectedCategory);
       }
       
-      if (selectedCompany !== 'all') {
-        params.append('entreprise', selectedCompany);
-      }
       
       if (priceRange[0] > 0) {
         params.append('prix_min', priceRange[0].toString());
@@ -151,14 +199,14 @@ const CatalogPage: React.FC = () => {
             Math.round(((parseFloat(product.prix_achat) - parseFloat(product.prix_vente)) / parseFloat(product.prix_achat)) * 100) : 0,
           rating: 4.0 + Math.random() * 1.0, // Simulation entre 4.0 et 5.0
           reviews: Math.floor(Math.random() * 300) + 20, // Simulation entre 20 et 320
-          image: product.image || getProductImage(categoryName, product.nom, product.id),
-          images: product.images?.length > 0 ? product.images : productImages,
+          image: product.images?.[0]?.image ? decodeURIComponent(product.images[0].image.replace('/media/', '')) : getProductImage(categoryName, product.nom, product.id),
+          images: product.images?.length > 0 ? product.images.map((img: any) => img.image ? decodeURIComponent(img.image.replace('/media/', '')) : img.image) : productImages,
           category: categoryName,
           categoryId: product.categorie?.id,
           brand: product.marque_nom || product.marque || 'Marque inconnue',
           brandId: product.marque,
-          stock: parseInt(product.stock_actuel) || 0,
-          inStock: (parseInt(product.stock_actuel) || 0) > 0,
+          stock: parseInt(product.stock_actuel) || parseInt(product.stock_disponible) || 0,
+          inStock: (parseInt(product.stock_actuel) || parseInt(product.stock_disponible) || 0) > 0,
           colors: product.couleurs_disponibles || ['Noir', 'Blanc'],
           sizes: product.tailles_disponibles || ['S', 'M', 'L'],
           weight: product.poids || 0,
@@ -194,21 +242,118 @@ const CatalogPage: React.FC = () => {
       }) || [];
       
       setProducts(transformedProducts);
-      setFilteredProducts(transformedProducts);
-      console.log('Produits transformés:', transformedProducts.length);
+      
+      // Appliquer le filtrage côté client si nécessaire
+      let filteredProducts = transformedProducts;
+      
+      // Filtrage par entreprise côté client (en cas d'échec du filtrage serveur)
+      if (selectedCompany !== 'all') {
+        filteredProducts = transformedProducts.filter(product => {
+          const productCompanyId = typeof product.entreprise === 'object' ? product.entreprise?.id : product.entreprise;
+          return productCompanyId === selectedCompany || productCompanyId === parseInt(selectedCompany) || productCompanyId === selectedCompany.toString();
+        });
+        console.log(`Filtrage côté client - Entreprise: ${selectedCompany}, Produits filtrés: ${filteredProducts.length}`);
+      }
+      
+      setFilteredProducts(filteredProducts);
+      console.log('Produits transformés:', transformedProducts.length, 'Produits filtrés:', filteredProducts.length);
       
       // Mettre à jour les compteurs de catégories
-      updateCategoryCounts(transformedProducts);
+      updateCategoryCounts(filteredProducts);
       
     } catch (error) {
       console.error('Erreur lors du chargement des produits:', error);
-      // En cas d'erreur, utiliser les données mockées
-      setProducts(mockProducts);
-      setFilteredProducts(mockProducts);
+      // En cas d'erreur, utiliser les données en cache ou vides
+      setProducts([]);
+      setFilteredProducts([]);
     } finally {
       setLoading(false);
     }
   };
+
+  // Fonctions pour gérer le panier
+  const handleAddToCart = (product: any) => {
+    console.log('handleAddToCart appelé avec:', { 
+      product: product.name || product.nom, 
+      productId: product.id,
+      quantity, 
+      selectedColor, 
+      selectedSize 
+    });
+    
+    // S'assurer que le produit a un ID valide
+    if (!product.id) {
+      console.error('Produit sans ID:', product);
+      return;
+    }
+    
+    const success = addToCart(product, quantity, selectedColor, selectedSize);
+    console.log('Résultat addToCart:', success);
+    
+    if (success) {
+      // Afficher une notification de succès
+      console.log('Produit ajouté au panier:', product.name || product.nom);
+      // Réinitialiser les sélections
+      setSelectedColor('');
+      setSelectedSize('');
+      setQuantity(1);
+    } else {
+      console.error('Erreur lors de l\'ajout au panier');
+    }
+  };
+
+  const handleRemoveFromCart = (productId: string) => {
+    const success = removeFromCart(productId);
+    if (success) {
+      console.log('Produit retiré du panier:', productId);
+    }
+  };
+
+  const handleUpdateQuantity = (productId: string, newQuantity: number) => {
+    const success = updateQuantity(productId, newQuantity);
+    if (success) {
+      console.log('Quantité mise à jour:', productId, newQuantity);
+    }
+  };
+
+  // Fonctions pour gérer les favoris
+  const toggleFavorite = (productId: number) => {
+    setFavorites(prev => {
+      const newFavorites = new Set(prev);
+      if (newFavorites.has(productId)) {
+        newFavorites.delete(productId);
+        // Retirer des favoris dans le localStorage
+        const savedFavorites = JSON.parse(localStorage.getItem('favorites') || '[]');
+        const updatedFavorites = savedFavorites.filter((id: number) => id !== productId);
+        localStorage.setItem('favorites', JSON.stringify(updatedFavorites));
+        console.log('💖 Produit retiré des favoris:', productId);
+      } else {
+        newFavorites.add(productId);
+        // Ajouter aux favoris dans le localStorage
+        const savedFavorites = JSON.parse(localStorage.getItem('favorites') || '[]');
+        savedFavorites.push(productId);
+        localStorage.setItem('favorites', JSON.stringify(savedFavorites));
+        console.log('💖 Produit ajouté aux favoris:', productId);
+      }
+      
+      // Déclencher un événement pour notifier les autres composants
+      window.dispatchEvent(new CustomEvent('favoritesUpdated', {
+        detail: { favorites: Array.from(newFavorites) }
+      }));
+      
+      return newFavorites;
+    });
+  };
+
+  const isFavorite = (productId: number) => {
+    return favorites.has(productId);
+  };
+
+  // Charger les favoris depuis le localStorage
+  useEffect(() => {
+    const savedFavorites = JSON.parse(localStorage.getItem('favorites') || '[]');
+    setFavorites(new Set(savedFavorites));
+  }, []);
 
   const updateCategoryCounts = (productsList: any[]) => {
     setCategories(prevCategories => 
@@ -272,7 +417,7 @@ const CatalogPage: React.FC = () => {
       console.error('Erreur lors du chargement des catégories:', error);
       // En cas d'erreur, utiliser seulement la catégorie "Toutes"
       setCategories([
-        { id: 'all', name: 'Toutes les catégories', count: products.length, icon: '📦' }
+        { id: 'all', name: 'Toutes les catégories', count: products?.length || 0, icon: '📦' }
       ]);
     }
   };
@@ -313,59 +458,11 @@ const CatalogPage: React.FC = () => {
     }
   };
 
-  const loadCart = () => {
-    try {
-      const savedCart = localStorage.getItem('cart');
-      if (savedCart) {
-        setCart(JSON.parse(savedCart));
-      }
-    } catch (error) {
-      console.error('Erreur lors du chargement du panier:', error);
-    }
-  };
 
-  const toggleFavorite = (productId: number) => {
-    const newFavorites = new Set(favorites);
-    if (newFavorites.has(productId)) {
-      newFavorites.delete(productId);
-    } else {
-      newFavorites.add(productId);
-    }
-    setFavorites(newFavorites);
-    localStorage.setItem('favorites', JSON.stringify([...newFavorites]));
-  };
-
-  const addToCart = (product: any, quantity: number = 1) => {
-    try {
-      const existingItem = cart.find(item => item.id === product.id);
-      let newCart;
-      
-      if (existingItem) {
-        newCart = cart.map(item =>
-          item.id === product.id
-            ? { ...item, quantity: item.quantity + quantity }
-            : item
-        );
-      } else {
-        newCart = [...cart, { ...product, quantity }];
-      }
-      
-      setCart(newCart);
-      localStorage.setItem('cart', JSON.stringify(newCart));
-      
-      // Déclencher un événement personnalisé pour notifier les autres composants
-      window.dispatchEvent(new CustomEvent('cartUpdated'));
-      
-      // Afficher une notification de succès
-      console.log('Produit ajouté au panier:', product.name);
-    } catch (error) {
-      console.error('Erreur lors de l\'ajout au panier:', error);
-    }
-  };
 
   const handleQuickAdd = (product: any) => {
     if (product.inStock) {
-      addToCart(product, 1);
+      handleAddToCart(product);
     }
   };
 
@@ -616,9 +713,9 @@ const CatalogPage: React.FC = () => {
             ))}
           </div>
           <span className="text-sm font-medium text-gray-900 dark:text-white">
-            {product.rating.toFixed(1)}
+            {(product.rating || 0).toFixed(1)}
           </span>
-          <span className="text-xs text-gray-500">({product.reviews})</span>
+          <span className="text-xs text-gray-500">({product.reviews || 0})</span>
         </div>
 
         {/* Price */}
@@ -626,11 +723,11 @@ const CatalogPage: React.FC = () => {
           <div>
             <div className="flex items-center space-x-2">
               <span className="text-lg font-bold text-gray-900 dark:text-white">
-                {product.price.toLocaleString()} XOF
+                {(product.price || 0).toLocaleString()} XOF
               </span>
               {product.discount > 0 && (
                 <span className="text-sm text-gray-500 line-through">
-                  {product.originalPrice.toLocaleString()} XOF
+                  {(product.originalPrice || 0).toLocaleString()} XOF
                 </span>
               )}
             </div>
@@ -662,7 +759,7 @@ const CatalogPage: React.FC = () => {
             className="flex-1"
             onClick={(e) => {
               e.stopPropagation();
-              handleQuickAdd(product);
+              handleAddToCart(product);
             }}
             disabled={!product.inStock}
           >
@@ -686,6 +783,17 @@ const CatalogPage: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {/* Debug Cart Info */}
+      <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
+        <h3 className="font-semibold text-yellow-800 dark:text-yellow-200 mb-2">🐛 Debug Panier</h3>
+        <div className="text-sm text-yellow-700 dark:text-yellow-300">
+          <p>Articles dans le panier: {cartItems.length}</p>
+          <p>Total d'articles: {cartSummary.totalItems}</p>
+          <p>Sous-total: {cartSummary.subtotal.toLocaleString()} XOF</p>
+          <p>Total: {cartSummary.total.toLocaleString()} XOF</p>
+        </div>
+      </div>
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -824,8 +932,8 @@ const CatalogPage: React.FC = () => {
                 <span className="text-xs text-gray-500">XOF</span>
               </div>
               <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
-                <span>{priceRange[0].toLocaleString()} XOF</span>
-                <span className="font-medium">{priceRange[1].toLocaleString()} XOF</span>
+                <span>{(priceRange[0] || 0).toLocaleString()} XOF</span>
+                <span className="font-medium">{(priceRange[1] || 0).toLocaleString()} XOF</span>
               </div>
             </div>
           </div>
@@ -886,7 +994,7 @@ const CatalogPage: React.FC = () => {
             `}
           >
             <AnimatePresence>
-              {filteredProducts.length > 0 ? (
+              {filteredProducts && filteredProducts.length > 0 ? (
                 filteredProducts.map((product) => (
                   <ProductCard key={product.id} product={product} />
                 ))
@@ -980,7 +1088,7 @@ const CatalogPage: React.FC = () => {
                     />
                   </div>
                   
-                  {selectedProduct.images.length > 1 && (
+                  {selectedProduct.images && selectedProduct.images.length > 1 && (
                     <div className="flex space-x-2">
                       {selectedProduct.images.map((img: string, index: number) => (
                         <img
@@ -1039,7 +1147,7 @@ const CatalogPage: React.FC = () => {
                         <Star
                           key={i}
                           className={`w-4 h-4 ${
-                            i < Math.floor(selectedProduct.rating)
+                            i < Math.floor(selectedProduct.rating || 0)
                               ? 'text-yellow-400 fill-current'
                               : 'text-gray-300'
                           }`}
@@ -1047,20 +1155,20 @@ const CatalogPage: React.FC = () => {
                       ))}
                     </div>
                     <span className="font-medium text-gray-900 dark:text-white">
-                      {selectedProduct.rating}
+                      {selectedProduct.rating || 0}
                     </span>
-                    <span className="text-sm text-gray-500">({selectedProduct.reviews} avis)</span>
+                    <span className="text-sm text-gray-500">({selectedProduct.reviews || 0} avis)</span>
                   </div>
 
                   {/* Price */}
                   <div className="mb-6">
                     <div className="flex items-center space-x-3 mb-2">
                       <span className="text-3xl font-bold text-gray-900 dark:text-white">
-                        {selectedProduct.price.toLocaleString()} XOF
+                        {(selectedProduct.price || 0).toLocaleString()} XOF
                       </span>
                       {selectedProduct.discount > 0 && (
                         <span className="text-lg text-gray-500 line-through">
-                          {selectedProduct.originalPrice.toLocaleString()} XOF
+                          {(selectedProduct.originalPrice || 0).toLocaleString()} XOF
                         </span>
                       )}
                       {selectedProduct.discount > 0 && (
@@ -1073,7 +1181,7 @@ const CatalogPage: React.FC = () => {
                       <span className="text-sm text-green-600 font-medium">✓ Livraison gratuite</span>
                     ) : (
                       <span className="text-sm text-gray-600">
-                        Livraison: {selectedProduct.shipping.cost?.toLocaleString()} XOF
+                        Livraison: {(selectedProduct.shipping?.cost || 0).toLocaleString()} XOF
                       </span>
                     )}
                   </div>
@@ -1148,12 +1256,17 @@ const CatalogPage: React.FC = () => {
                       fullWidth
                       size="lg"
                       icon={<ShoppingCart className="w-5 h-5" />}
+                      onClick={() => handleAddToCart(selectedProduct)}
                     >
-                      Ajouter au Panier - {(selectedProduct.price * quantity).toLocaleString()} XOF
+                      Ajouter au Panier - {((selectedProduct.price || 0) * quantity).toLocaleString()} XOF
                     </Button>
                     <div className="grid grid-cols-2 gap-3">
-                      <Button variant="secondary" icon={<Heart className="w-4 h-4" />}>
-                        Favoris
+                      <Button 
+                        variant="secondary" 
+                        icon={<Heart className="w-4 h-4" />}
+                        onClick={() => toggleFavorite(selectedProduct.id)}
+                      >
+                        {isFavorite(selectedProduct.id) ? 'Retiré des favoris' : 'Ajouter aux favoris'}
                       </Button>
                       <Button variant="secondary" icon={<Eye className="w-4 h-4" />}>
                         Comparer

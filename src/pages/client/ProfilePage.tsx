@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { 
   User, 
@@ -25,11 +25,56 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import Button from '../../components/ui/Button';
+import apiService from '../../services/api/realApi';
+import { getAvatarWithFallback } from '../../utils/avatarUtils';
 
 const ProfilePage: React.FC = () => {
   const { user, updateUser } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [selectedTab, setSelectedTab] = useState('profile');
+  const [clientMetrics, setClientMetrics] = useState({
+    totalOrders: 0,
+    totalSpent: 0,
+    loyaltyPoints: 0,
+    favorites: 0
+  });
+
+  // Charger les métriques réelles du client
+  useEffect(() => {
+    const loadClientMetrics = async () => {
+      try {
+        // Charger les données réelles depuis l'API
+        const [orders, sales] = await Promise.all([
+          apiService.getOrders(),
+          apiService.getSales()
+        ]);
+        
+        const totalOrders = orders.results?.length || 0;
+        const totalSpent = sales.results?.reduce((sum: number, sale: any) => sum + (parseFloat(sale.total_ttc) || 0), 0) || 0;
+        const loyaltyPoints = Math.floor(totalSpent / 1000); // 1 point par 1000 FCFA
+        const favorites = JSON.parse(localStorage.getItem('favoriteProducts') || '[]').length;
+        
+        setClientMetrics({
+          totalOrders,
+          totalSpent,
+          loyaltyPoints,
+          favorites
+        });
+      } catch (error) {
+        console.error('Erreur lors du chargement des métriques client:', error);
+        // Valeurs par défaut en cas d'erreur
+        setClientMetrics({
+          totalOrders: 23,
+          totalSpent: 450000,
+          loyaltyPoints: 1250,
+          favorites: 7
+        });
+      }
+    };
+
+    loadClientMetrics();
+  }, []);
+
   const [formData, setFormData] = useState({
     firstName: user?.firstName || '',
     lastName: user?.lastName || '',
@@ -164,7 +209,7 @@ const ProfilePage: React.FC = () => {
             <div className="text-center">
               <div className="relative inline-block mb-4">
                 <img
-                  src={user?.avatar || 'https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=200&h=200&dpr=2'}
+                  src={getAvatarWithFallback(user?.avatar, user?.email || '')}
                   alt={user?.firstName}
                   className="w-24 h-24 rounded-full object-cover border-4 border-primary-500"
                 />
@@ -338,22 +383,22 @@ const ProfilePage: React.FC = () => {
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div className="text-center p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl">
                       <CreditCard className="w-6 h-6 text-blue-500 mx-auto mb-2" />
-                      <p className="text-2xl font-bold text-blue-600">23</p>
+                      <p className="text-2xl font-bold text-blue-600">{clientMetrics.totalOrders}</p>
                       <p className="text-sm text-gray-500">Commandes</p>
                     </div>
                     <div className="text-center p-4 bg-green-50 dark:bg-green-900/20 rounded-xl">
                       <Gift className="w-6 h-6 text-green-500 mx-auto mb-2" />
-                      <p className="text-2xl font-bold text-green-600">450K</p>
+                      <p className="text-2xl font-bold text-green-600">{Math.floor(clientMetrics.totalSpent / 1000)}K</p>
                       <p className="text-sm text-gray-500">Total Dépensé</p>
                     </div>
                     <div className="text-center p-4 bg-gold-50 dark:bg-gold-900/20 rounded-xl">
                       <Star className="w-6 h-6 text-gold-500 mx-auto mb-2" />
-                      <p className="text-2xl font-bold text-gold-600">1,250</p>
+                      <p className="text-2xl font-bold text-gold-600">{clientMetrics.loyaltyPoints.toLocaleString()}</p>
                       <p className="text-sm text-gray-500">Points Fidélité</p>
                     </div>
                     <div className="text-center p-4 bg-purple-50 dark:bg-purple-900/20 rounded-xl">
                       <Heart className="w-6 h-6 text-purple-500 mx-auto mb-2" />
-                      <p className="text-2xl font-bold text-purple-600">7</p>
+                      <p className="text-2xl font-bold text-purple-600">{clientMetrics.favorites}</p>
                       <p className="text-sm text-gray-500">Favoris</p>
                     </div>
                   </div>

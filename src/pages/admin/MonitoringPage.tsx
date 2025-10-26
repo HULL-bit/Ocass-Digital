@@ -100,8 +100,14 @@ const MonitoringPage: React.FC = () => {
       
     } catch (error) {
       console.error('Erreur lors du chargement des données de monitoring:', error);
-      // En cas d'erreur, utiliser des données par défaut
-      generateRealTimeData(0, 0, 0);
+      // En cas d'erreur, utiliser des données vides
+      setSystemMetrics({
+        cpu: 0,
+        memory: 0,
+        disk: 0,
+        network: 0,
+        uptime: 0
+      });
     } finally {
       setLoading(false);
     }
@@ -835,12 +841,19 @@ const MonitoringPage: React.FC = () => {
             } },
             { icon: Download, label: 'Export Logs', color: 'from-yellow-500 to-orange-500', action: async () => {
               try {
-                // TODO: Implémenter l'endpoint d'export logs
-                console.log('Export des logs...');
-                alert('Export des logs en cours...');
+                // Créer un ticket pour l'export des logs
+                const logsData = {
+                  sujet: 'Demande d\'export des logs système',
+                  description: 'Export des logs de monitoring demandé par l\'administrateur',
+                  priorite: 'moyenne',
+                  categorie: 'monitoring'
+                };
+                
+                await apiService.createTicket(logsData);
+                alert('Demande d\'export des logs créée ! Les logs seront générés et vous recevrez un lien de téléchargement.');
               } catch (error) {
-                console.error('Erreur lors de l\'export:', error);
-                alert('Erreur lors de l\'export des logs');
+                console.error('Erreur lors de la demande d\'export:', error);
+                alert('Erreur lors de la demande d\'export des logs');
               }
             } },
             { icon: Settings, label: 'Configuration', color: 'from-gray-500 to-gray-600', action: () => window.location.href = '/admin/settings' },

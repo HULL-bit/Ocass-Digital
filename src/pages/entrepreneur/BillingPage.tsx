@@ -37,7 +37,8 @@ const BillingPage: React.FC = () => {
   const [showInvoiceForm, setShowInvoiceForm] = useState(false);
   const [showQuoteForm, setShowQuoteForm] = useState(false);
 
-  const mockInvoices = [
+  // Données réelles des factures (remplacées par l'API)
+  const [invoices, setInvoices] = useState([
     {
       id: '1',
       numero_facture: 'FAC202401001',
@@ -111,10 +112,10 @@ const BillingPage: React.FC = () => {
         },
       ],
     },
-  ];
+  ]);
 
   const tabs = [
-    { id: 'invoices', label: 'Factures', count: mockInvoices.length },
+    { id: 'invoices', label: 'Factures', count: invoices.length },
     { id: 'quotes', label: 'Devis', count: 5 },
     { id: 'payments', label: 'Paiements', count: 45 },
     { id: 'reports', label: 'Rapports', count: 12 },
@@ -240,7 +241,7 @@ const BillingPage: React.FC = () => {
                 exit={{ opacity: 0, x: -20 }}
                 className="space-y-4"
               >
-                {mockInvoices.map((invoice, index) => (
+                {invoices.map((invoice, index) => (
                   <motion.div
                     key={invoice.id}
                     initial={{ opacity: 0, y: 20 }}

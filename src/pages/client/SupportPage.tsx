@@ -504,14 +504,36 @@ const SupportPage: React.FC = () => {
                 try {
                   switch(action.action) {
                     case 'track_order':
-                      // TODO: Implémenter le suivi de commande
-                      console.log('Suivi de commande...');
-                      alert('Fonctionnalité de suivi de commande en cours de développement');
+                      // Implémentation du suivi de commande
+                      try {
+                        const trackingData = {
+                          sujet: 'Suivi de commande',
+                          description: 'Demande de suivi de commande depuis les actions rapides',
+                          priorite: 'moyenne',
+                          categorie: 'commande'
+                        };
+                        await apiService.createTicket(trackingData);
+                        alert('Demande de suivi de commande créée ! Vous recevrez un email avec les détails.');
+                      } catch (error) {
+                        console.error('Erreur lors de la création du ticket de suivi:', error);
+                        alert('Erreur lors de la création de la demande de suivi');
+                      }
                       break;
                     case 'return_product':
-                      // TODO: Implémenter le retour de produit
-                      console.log('Retour de produit...');
-                      alert('Fonctionnalité de retour de produit en cours de développement');
+                      // Implémentation du retour de produit
+                      try {
+                        const returnData = {
+                          sujet: 'Retour de produit',
+                          description: 'Demande de retour de produit depuis les actions rapides',
+                          priorite: 'moyenne',
+                          categorie: 'retour'
+                        };
+                        await apiService.createTicket(returnData);
+                        alert('Demande de retour de produit créée ! Vous recevrez les instructions par email.');
+                      } catch (error) {
+                        console.error('Erreur lors de la création du ticket de retour:', error);
+                        alert('Erreur lors de la création de la demande de retour');
+                      }
                       break;
                     case 'payment_issue':
                       // Créer un ticket pour problème de paiement

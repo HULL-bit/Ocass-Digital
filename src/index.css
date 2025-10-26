@@ -75,11 +75,11 @@
   }
 
   .sidebar-link {
-    @apply flex items-center px-4 py-3 mx-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-primary-50 dark:hover:bg-primary-900/20 hover:text-primary-600 dark:hover:text-primary-400 transition-all duration-300;
+    @apply flex items-center px-4 py-3 mx-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-white transition-all duration-300;
   }
 
   .sidebar-link.active {
-    @apply bg-gradient-to-r from-primary-500 to-electric-500 text-white shadow-lg;
+    @apply bg-gradient-to-r from-gray-800 to-gray-900 dark:from-gray-700 dark:to-gray-800 text-white shadow-lg;
   }
 
   .metric-card {

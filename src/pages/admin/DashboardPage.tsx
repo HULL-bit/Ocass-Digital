@@ -1,28 +1,81 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { 
   Users, 
   Building2, 
-  TrendingUp, 
   DollarSign, 
   Activity,
   AlertTriangle,
   CheckCircle,
   Clock,
   Zap,
-  Globe,
   Shield,
-  Database
+  Database,
+  Settings,
+  BarChart3
 } from 'lucide-react';
-import { LineChart, Line, AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import MetricCard from '../../components/ui/MetricCard';
-import Button from '../../components/ui/Button';
+import { LineChart, Line, AreaChart, Area, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import DateTimeCard from '../../components/ui/DateTimeCard';
+import apiService from '../../services/api/realApi';
+import dashboardApiService from '../../services/api/dashboardApi';
+import useDataSync from '../../hooks/useDataSync';
 
 const DashboardPage: React.FC = () => {
-  const [selectedPeriod, setSelectedPeriod] = useState('month');
+  const [dashboardData, setDashboardData] = useState({
+    totalUsers: 0,
+    totalCompanies: 0,
+    totalProducts: 0,
+    totalRevenue: 0,
+    activeUsers: 0,
+    newUsersThisMonth: 0,
+    newCompaniesThisMonth: 0,
+    loading: true
+  });
+  
+  // Utiliser le hook de synchronisation des données (automatique)
+  const { } = useDataSync();
+  
+  // Données réelles du dashboard
+  const [realDashboardData, setRealDashboardData] = useState<any>(null);
 
-  // Mock data pour les graphiques
-  const platformGrowthData = [
+  // Charger les données réelles du dashboard - OPTIMISÉ
+  useEffect(() => {
+    const loadRealDashboardData = async () => {
+      try {
+        setDashboardData(prev => ({ ...prev, loading: true }));
+        
+        // Charger les métriques réelles avec cache
+        const metrics = await dashboardApiService.getDashboardMetrics();
+        setRealDashboardData(metrics);
+        
+        setDashboardData({
+          totalUsers: metrics.totalUsers,
+          totalCompanies: metrics.totalCompanies,
+          totalProducts: metrics.totalProducts,
+          totalRevenue: metrics.totalRevenue,
+          activeUsers: metrics.activeUsers,
+          newUsersThisMonth: metrics.newUsersThisMonth,
+          newCompaniesThisMonth: metrics.newCompaniesThisMonth,
+          loading: false
+        });
+      } catch (error) {
+        console.error('Erreur lors du chargement des métriques:', error);
+        setDashboardData(prev => ({ ...prev, loading: false }));
+      }
+    };
+
+    // Charger une seule fois au montage
+    loadRealDashboardData();
+    
+    // Recharger les données toutes les 5 minutes pour maintenir la cohérence
+    const interval = setInterval(loadRealDashboardData, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Synchronisation automatique des données (invisible)
+
+  // Utiliser les données réelles ou des données par défaut
+  const platformGrowthData = realDashboardData?.platformGrowth || [
     { name: 'Jan', users: 850, companies: 45, revenue: 12500000 },
     { name: 'Fév', users: 920, companies: 52, revenue: 14200000 },
     { name: 'Mar', users: 1050, companies: 61, revenue: 16800000 },
@@ -31,7 +84,7 @@ const DashboardPage: React.FC = () => {
     { name: 'Jun', users: 1450, companies: 89, revenue: 24800000 },
   ];
 
-  const sectorDistribution = [
+  const sectorDistribution = realDashboardData?.sectorDistribution || [
     { name: 'Commerce', value: 35, color: '#E91E63', companies: 31 },
     { name: 'Technologie', value: 25, color: '#2196F3', companies: 22 },
     { name: 'Santé', value: 20, color: '#4CAF50', companies: 18 },
@@ -39,7 +92,7 @@ const DashboardPage: React.FC = () => {
     { name: 'Autres', value: 5, color: '#9C27B0', companies: 5 },
   ];
 
-  const recentActivities = [
+  const recentActivities = realDashboardData?.recentActivities || [
     {
       id: '1',
       type: 'user_registered',
@@ -74,7 +127,7 @@ const DashboardPage: React.FC = () => {
     },
   ];
 
-  const systemHealth = [
+  const systemHealth = realDashboardData?.systemHealth || [
     { service: 'API Django', status: 'healthy', uptime: '99.9%', responseTime: '45ms' },
     { service: 'Base de Données', status: 'healthy', uptime: '99.8%', responseTime: '12ms' },
     { service: 'Redis Cache', status: 'healthy', uptime: '99.9%', responseTime: '2ms' },
@@ -82,18 +135,12 @@ const DashboardPage: React.FC = () => {
     { service: 'Celery Workers', status: 'healthy', uptime: '99.7%', responseTime: '156ms' },
   ];
 
-  const topCompanies = [
+  const topCompanies = realDashboardData?.topCompanies || [
     { name: 'TechSolutions Sénégal', revenue: 150000000, growth: 25.5, users: 25 },
     { name: 'Boutique Marie Diallo', revenue: 25000000, growth: 18.2, users: 5 },
     { name: 'Pharmacie Moderne', revenue: 45000000, growth: 12.8, users: 8 },
   ];
 
-  const periods = [
-    { value: 'week', label: 'Cette semaine' },
-    { value: 'month', label: 'Ce mois' },
-    { value: 'quarter', label: 'Ce trimestre' },
-    { value: 'year', label: 'Cette année' },
-  ];
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -110,70 +157,219 @@ const DashboardPage: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold gradient-text">Dashboard Administrateur OCASS DIGITAL</h1>
-          <p className="text-gray-600 dark:text-gray-400 mt-1">
-            Vue d'ensemble de la plateforme commerciale OCASS DIGITAL
-          </p>
-        </div>
-        
-        <div className="flex items-center space-x-2">
-          {periods.map((period) => (
-            <motion.button
-              key={period.value}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => setSelectedPeriod(period.value)}
-              className={`
-                px-4 py-2 rounded-xl text-sm font-medium transition-all duration-300
-                ${selectedPeriod === period.value
-                  ? 'bg-primary-500 text-white shadow-lg'
-                  : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                }
-              `}
-            >
-              {period.label}
-            </motion.button>
-          ))}
+      {/* Main Organization Card - Like in the image */}
+      <div className="bg-white dark:bg-dark-800 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 p-8">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center space-x-4">
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 flex items-center justify-center shadow-lg">
+              <Building2 className="w-7 h-7 text-white" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold gradient-text">Dashboard Administrateur</h1>
+              <p className="text-gray-600 dark:text-gray-400 mt-1">
+                Gestion et supervision de la plateforme commerciale
+              </p>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Key Metrics */}
+      {/* DateTime Card */}
+      <DateTimeCard userRole="admin" />
+
+      {/* Main Metrics Cards - Like in the image */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <MetricCard
-          title="Revenus Totaux"
-          value={24800000}
-          previousValue={22100000}
-          format="currency"
-          icon={<DollarSign className="w-6 h-6" />}
-          color="success"
-        />
-        <MetricCard
-          title="Utilisateurs Actifs"
-          value={1450}
-          previousValue={1320}
-          format="number"
-          icon={<Users className="w-6 h-6" />}
-          color="primary"
-        />
-        <MetricCard
-          title="Entreprises"
-          value={89}
-          previousValue={82}
-          format="number"
-          icon={<Building2 className="w-6 h-6" />}
-          color="info"
-        />
-        <MetricCard
-          title="Taux de Croissance"
-          value={12.2}
-          previousValue={8.7}
-          format="percentage"
-          icon={<TrendingUp className="w-6 h-6" />}
-          color="warning"
-        />
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white dark:bg-dark-800 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 p-6"
+        >
+          <div className="flex items-center justify-between mb-4">
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 flex items-center justify-center shadow-lg">
+              <Users className="w-6 h-6 text-white" />
+            </div>
+            <div className="text-right">
+              <p className="text-3xl font-bold text-gray-900 dark:text-white">
+                {dashboardData.loading ? '...' : dashboardData.totalUsers.toLocaleString()}
+              </p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Utilisateurs totaux</p>
+            </div>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-sm bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-3 py-1 rounded-full">
+              +{dashboardData.newUsersThisMonth} ce mois
+            </span>
+            <div className="w-16 h-2 bg-blue-100 dark:bg-blue-900 rounded-full">
+              <div className="w-12 h-2 bg-blue-500 rounded-full"></div>
+            </div>
+          </div>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="bg-white dark:bg-dark-800 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 p-6"
+        >
+          <div className="flex items-center justify-between mb-4">
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-r from-green-500 to-green-600 flex items-center justify-center shadow-lg">
+              <DollarSign className="w-6 h-6 text-white" />
+            </div>
+            <div className="text-right">
+              <p className="text-3xl font-bold text-gray-900 dark:text-white">
+                {dashboardData.loading ? '...' : `${(dashboardData.totalRevenue / 1000000).toFixed(1)}M`}
+              </p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Revenus totaux</p>
+            </div>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-sm bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-3 py-1 rounded-full">
+              XOF
+            </span>
+            <div className="w-16 h-2 bg-green-100 dark:bg-green-900 rounded-full">
+              <div className="w-12 h-2 bg-green-500 rounded-full"></div>
+            </div>
+          </div>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="bg-white dark:bg-dark-800 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 p-6"
+        >
+          <div className="flex items-center justify-between mb-4">
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 flex items-center justify-center shadow-lg">
+              <Activity className="w-6 h-6 text-white" />
+            </div>
+            <div className="text-right">
+              <p className="text-3xl font-bold text-gray-900 dark:text-white">
+                {dashboardData.loading ? '...' : dashboardData.activeUsers.toLocaleString()}
+              </p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Utilisateurs actifs</p>
+            </div>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-sm bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-3 py-1 rounded-full">
+              En ligne
+            </span>
+            <div className="w-16 h-2 bg-blue-100 dark:bg-blue-900 rounded-full">
+              <div className="w-10 h-2 bg-blue-500 rounded-full"></div>
+            </div>
+          </div>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+          className="bg-white dark:bg-dark-800 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 p-6"
+        >
+          <div className="flex items-center justify-between mb-4">
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-r from-green-500 to-green-600 flex items-center justify-center shadow-lg">
+              <Building2 className="w-6 h-6 text-white" />
+            </div>
+            <div className="text-right">
+              <p className="text-3xl font-bold text-gray-900 dark:text-white">
+                {dashboardData.loading ? '...' : dashboardData.totalCompanies.toLocaleString()}
+              </p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Entreprises inscrites</p>
+            </div>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-sm bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-3 py-1 rounded-full">
+              +{dashboardData.newCompaniesThisMonth} ce mois
+            </span>
+            <div className="w-16 h-2 bg-green-100 dark:bg-green-900 rounded-full">
+              <div className="w-14 h-2 bg-green-500 rounded-full"></div>
+            </div>
+          </div>
+        </motion.div>
+      </div>
+
+      {/* System Status Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* System Health */}
+        <div className="card-premium p-6">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center">
+            <Activity className="w-5 h-5 mr-2 text-green-500" />
+            État du Système
+          </h3>
+          
+          <div className="space-y-3">
+            {systemHealth.map((service: any, index: number) => (
+              <motion.div
+                key={service.service}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.1 }}
+                className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-xl"
+              >
+                <div className="flex items-center space-x-3">
+                  {getStatusIcon(service.status)}
+                  <div>
+                    <p className="font-medium text-gray-900 dark:text-white text-sm">
+                      {service.service}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      Uptime: {service.uptime} • {service.responseTime}
+                    </p>
+                  </div>
+                </div>
+                <span className={`text-xs px-2 py-1 rounded-full ${
+                  service.status === 'healthy' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
+                  service.status === 'warning' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' :
+                  'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+                }`}>
+                  {service.status === 'healthy' ? 'Sain' : 
+                   service.status === 'warning' ? 'Attention' : 'Erreur'}
+                </span>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+
+        {/* Recent Activity */}
+        <div className="card-premium p-6">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center">
+            <Clock className="w-5 h-5 mr-2 text-blue-500" />
+            Activité Récente
+          </h3>
+          
+          <div className="space-y-3">
+            {recentActivities.map((activity: any, index: number) => {
+              const IconComponent = activity.icon;
+              return (
+                <motion.div
+                  key={activity.id}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: index * 0.1 }}
+                  className="flex items-start space-x-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-xl"
+                >
+                  <div className={`w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-600 flex items-center justify-center ${activity.color}`}>
+                    <IconComponent className="w-4 h-4" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">
+                      {activity.message}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {new Date(activity.timestamp).toLocaleString('fr-FR')}
+                    </p>
+                  </div>
+                </motion.div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Analyses Détaillées */}
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+          Analyses Détaillées
+        </h2>
       </div>
 
       {/* Charts Grid */}
@@ -243,9 +439,9 @@ const DashboardPage: React.FC = () => {
                 outerRadius={100}
                 fill="#8884d8"
                 dataKey="value"
-                label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                label={({ name, percent }) => `${name} ${((percent || 0) * 100).toFixed(0)}%`}
               >
-                {sectorDistribution.map((entry, index) => (
+                {sectorDistribution.map((entry: any, index: number) => (
                   <Cell key={`cell-${index}`} fill={entry.color} />
                 ))}
               </Pie>
@@ -291,7 +487,7 @@ const DashboardPage: React.FC = () => {
             Top Entreprises
           </h3>
           <div className="space-y-4">
-            {topCompanies.map((company, index) => (
+            {topCompanies.map((company: any, index: number) => (
               <motion.div
                 key={company.name}
                 initial={{ opacity: 0, x: -20 }}
@@ -329,7 +525,7 @@ const DashboardPage: React.FC = () => {
           </h3>
           
           <div className="space-y-3">
-            {systemHealth.map((service, index) => (
+            {systemHealth.map((service: any, index: number) => (
               <motion.div
                 key={service.service}
                 initial={{ opacity: 0, y: 20 }}
@@ -369,7 +565,7 @@ const DashboardPage: React.FC = () => {
           </h3>
           
           <div className="space-y-3">
-            {recentActivities.map((activity, index) => {
+            {recentActivities.map((activity: any, index: number) => {
               const IconComponent = activity.icon;
               return (
                 <motion.div
@@ -405,22 +601,30 @@ const DashboardPage: React.FC = () => {
         
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
           {[
-            { icon: Users, label: 'Gérer Utilisateurs', color: 'from-blue-500 to-cyan-500', action: () => window.location.href = '/admin/users' },
-            { icon: Building2, label: 'Gérer Entreprises', color: 'from-purple-500 to-pink-500', action: () => window.location.href = '/admin/companies' },
-            { icon: Shield, label: 'Sécurité', color: 'from-red-500 to-orange-500', action: () => window.location.href = '/admin/security' },
-            { icon: Database, label: 'Sauvegardes', color: 'from-green-500 to-emerald-500', action: async () => {
+            { icon: Users, label: 'Gérer Utilisateurs', color: 'from-gray-800 to-gray-900', action: () => window.location.href = '/admin/users' },
+            { icon: Building2, label: 'Gérer Entreprises', color: 'from-gray-800 to-gray-900', action: () => window.location.href = '/admin/companies' },
+            { icon: Shield, label: 'Sécurité', color: 'from-gray-800 to-gray-900', action: () => window.location.href = '/admin/security' },
+            { icon: Database, label: 'Sauvegardes', color: 'from-gray-800 to-gray-900', action: async () => {
               try {
-                // TODO: Implémenter l'endpoint de sauvegarde dans l'API
-                console.log('Démarrage de la sauvegarde...');
-                // await apiService.backupDatabase();
-                alert('Sauvegarde démarrée avec succès !');
+                // Créer un ticket de sauvegarde
+                const backupData = {
+                  sujet: 'Demande de sauvegarde système',
+                  description: 'Sauvegarde de la base de données demandée par l\'administrateur',
+                  priorite: 'haute',
+                  categorie: 'systeme'
+                };
+                
+                await apiService.createTicket(backupData);
+                alert('Demande de sauvegarde créée ! Le système effectuera la sauvegarde et vous notifiera.');
               } catch (error) {
-                console.error('Erreur lors de la sauvegarde:', error);
-                alert('Erreur lors de la sauvegarde');
+                console.error('Erreur lors de la demande de sauvegarde:', error);
+                alert('Erreur lors de la demande de sauvegarde');
               }
             } },
-            { icon: Activity, label: 'Monitoring', color: 'from-yellow-500 to-orange-500', action: () => window.location.href = '/admin/monitoring' },
-            { icon: Zap, label: 'Intégrations', color: 'from-indigo-500 to-purple-500', action: () => window.location.href = '/admin/integrations' },
+            { icon: Activity, label: 'Monitoring', color: 'from-gray-800 to-gray-900', action: () => window.location.href = '/admin/monitoring' },
+            { icon: Zap, label: 'Intégrations', color: 'from-gray-800 to-gray-900', action: () => window.location.href = '/admin/integrations' },
+            { icon: Settings, label: 'Configuration', color: 'from-gray-800 to-gray-900', action: () => window.location.href = '/admin/settings' },
+            { icon: BarChart3, label: 'Rapports Avancés', color: 'from-gray-800 to-gray-900', action: () => window.location.href = '/admin/reports' },
           ].map((action, index) => (
             <motion.button
               key={action.label}

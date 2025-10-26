@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
+import useCart from '../hooks/useCart';
 import DashboardMetrics from '../components/business/Dashboard/DashboardMetrics';
 import CatalogPage from '../pages/client/CatalogPage';
 import CartPage from '../pages/client/CartPage';
@@ -31,13 +32,51 @@ import LoyaltyPage from '../pages/client/LoyaltyPage';
 import SupportPage from '../pages/client/SupportPage';
 import WishlistPage from '../pages/client/WishlistPage';
 import Button from '../components/ui/Button';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { getAvatarWithFallback } from '../utils/avatarUtils';
 
 const ClientLayout: React.FC = () => {
   const { user, logout } = useAuth();
   const { isDark, toggleTheme } = useTheme();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  
+  // Utiliser les hooks pour les données réelles
+  const { cartSummary } = useCart();
+  const [favoritesCount, setFavoritesCount] = useState(0);
+  
+  // Charger le nombre de favoris
+  useEffect(() => {
+    const loadFavoritesCount = () => {
+      try {
+        const savedFavorites = localStorage.getItem('favorites');
+        if (savedFavorites) {
+          const favorites = JSON.parse(savedFavorites);
+          setFavoritesCount(favorites.length);
+        }
+      } catch (error) {
+        console.error('Erreur lors du chargement des favoris:', error);
+      }
+    };
+    
+    loadFavoritesCount();
+    
+    // Écouter les changements de favoris
+    const handleFavoritesChange = () => {
+      loadFavoritesCount();
+    };
+    
+    window.addEventListener('favoritesUpdated', handleFavoritesChange);
+    window.addEventListener('storage', (e) => {
+      if (e.key === 'favorites') {
+        loadFavoritesCount();
+      }
+    });
+    
+    return () => {
+      window.removeEventListener('favoritesUpdated', handleFavoritesChange);
+    };
+  }, []);
 
   const navigation = [
     {
@@ -63,14 +102,14 @@ const ClientLayout: React.FC = () => {
       href: '/client/cart',
       icon: ShoppingCart,
       current: location.pathname.startsWith('/client/cart'),
-      badge: 3,
+      badge: cartSummary.totalItems > 0 ? cartSummary.totalItems : undefined,
     },
     {
       name: 'Mes Favoris',
       href: '/client/wishlist',
       icon: Heart,
       current: location.pathname.startsWith('/client/wishlist'),
-      badge: 7,
+      badge: favoritesCount > 0 ? favoritesCount : undefined,
     },
     {
       name: 'Mes Commandes',
@@ -178,7 +217,7 @@ const ClientLayout: React.FC = () => {
               
               <div className="flex items-center space-x-3 mb-4">
                 <img
-                  src={user?.avatar || 'https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=2'}
+                  src={getAvatarWithFallback(user?.avatar, user?.email || '')}
                   alt={user?.firstName}
                   className="w-10 h-10 rounded-full object-cover"
                 />
@@ -193,7 +232,7 @@ const ClientLayout: React.FC = () => {
               </div>
               
               <Button
-                variant="danger"
+                className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white"
                 size="sm"
                 fullWidth
                 icon={<LogOut className="w-4 h-4" />}
@@ -239,13 +278,24 @@ const ClientLayout: React.FC = () => {
             </div>
 
             <div className="flex items-center space-x-4">
+              {/* Debug Info */}
+              <div className="hidden lg:flex items-center space-x-2 text-xs text-gray-500">
+                <span>Panier: {cartSummary.totalItems}</span>
+                <span>Favoris: {favoritesCount}</span>
+              </div>
+
               {/* Wishlist */}
-              <button className="relative p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
+              <Link
+                to="/client/wishlist"
+                className="relative p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
                 <Heart className="w-5 h-5" />
-                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-                  7
-                </span>
-              </button>
+                {favoritesCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                    {favoritesCount}
+                  </span>
+                )}
+              </Link>
 
               {/* Notifications */}
               <button className="relative p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
@@ -267,9 +317,11 @@ const ClientLayout: React.FC = () => {
                 className="relative p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
               >
                 <ShoppingCart className="w-5 h-5" />
-                <span className="absolute -top-1 -right-1 bg-primary-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-                  3
-                </span>
+                {cartSummary.totalItems > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-primary-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                    {cartSummary.totalItems}
+                  </span>
+                )}
               </Link>
             </div>
           </div>

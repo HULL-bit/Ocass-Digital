@@ -93,10 +93,10 @@ const CompaniesManagementPage: React.FC = () => {
       
       console.log(`Total des entreprises récupérées: ${allCompanies.length}`);
       
-      // Si aucune entreprise n'a été récupérée, utiliser les données mockées
+      // Si aucune entreprise n'a été récupérée, utiliser les données en cache ou vides
       if (allCompanies.length === 0) {
-        console.log('Aucune entreprise récupérée de l\'API, utilisation des données mockées');
-        allCompanies = mockCompanies;
+        console.log('Aucune entreprise récupérée de l\'API, utilisation des données en cache');
+        allCompanies = [];
       }
       
       // Transformer les données pour correspondre au format attendu
@@ -229,42 +229,24 @@ const CompaniesManagementPage: React.FC = () => {
           });
         } catch (cacheError) {
           console.error('Erreur lors du parsing du cache:', cacheError);
-          // Utiliser les données mockées en dernier recours
-          setCompanies(mockCompanies);
+          // Utiliser les données en cache ou vides en dernier recours
+          setCompanies([]);
           setMetrics({
-            totalCompanies: mockCompanies.length,
-            totalRevenue: mockCompanies.reduce((sum, company) => sum + company.revenue, 0),
-            averageGrowth: mockCompanies.reduce((sum, company) => sum + company.growth, 0) / mockCompanies.length,
-            newThisMonth: mockCompanies.filter(company => {
-              try {
-                const joinDate = new Date(company.joinDate);
-                const now = new Date();
-                if (isNaN(joinDate.getTime())) return false;
-                return joinDate.getMonth() === now.getMonth() && joinDate.getFullYear() === now.getFullYear();
-              } catch (error) {
-                return false;
-              }
-            }).length
+            totalCompanies: 0,
+            totalRevenue: 0,
+            averageGrowth: 0,
+            newThisMonth: 0
           });
         }
       } else {
-        // Utiliser les données mockées en dernier recours
-        console.log('Aucun cache disponible, utilisation des données mockées');
-        setCompanies(mockCompanies);
+        // Utiliser les données en cache ou vides en dernier recours
+        console.log('Aucun cache disponible, utilisation des données vides');
+        setCompanies([]);
         setMetrics({
-          totalCompanies: mockCompanies.length,
-          totalRevenue: mockCompanies.reduce((sum, company) => sum + company.revenue, 0),
-          averageGrowth: mockCompanies.reduce((sum, company) => sum + company.growth, 0) / mockCompanies.length,
-          newThisMonth: mockCompanies.filter(company => {
-            try {
-              const joinDate = new Date(company.joinDate);
-              const now = new Date();
-              if (isNaN(joinDate.getTime())) return false;
-              return joinDate.getMonth() === now.getMonth() && joinDate.getFullYear() === now.getFullYear();
-            } catch (error) {
-              return false;
-            }
-          }).length
+          totalCompanies: 0,
+          totalRevenue: 0,
+          averageGrowth: 0,
+          newThisMonth: 0
         });
       }
     } finally {

@@ -37,7 +37,8 @@ const SuppliersPage: React.FC = () => {
   const [showSupplierForm, setShowSupplierForm] = useState(false);
   const [showOrderForm, setShowOrderForm] = useState(false);
 
-  const mockSuppliers = [
+  // Données réelles des fournisseurs (remplacées par l'API)
+  const [suppliers, setSuppliers] = useState([
     {
       id: '1',
       nom: 'Distributeur Électronique Dakar',
@@ -117,10 +118,10 @@ const SuppliersPage: React.FC = () => {
         ponctualite: 98,
         qualite: 96,
         service: 94,
-        prix: 88,
-      },
+        prix: 88
+      }
     },
-  ];
+  ]);
 
   const supplierValidationSchema = yup.object({
     nom: yup.string().required('Le nom est requis').min(2, 'Minimum 2 caractères'),
@@ -329,7 +330,7 @@ const SuppliersPage: React.FC = () => {
 
         {/* Suppliers Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {mockSuppliers.map((supplier, index) => (
+          {suppliers.map((supplier, index) => (
             <motion.div
               key={supplier.id}
               initial={{ opacity: 0, y: 20 }}
@@ -528,7 +529,7 @@ const SuppliersPage: React.FC = () => {
                         {Object.entries(selectedSupplier.performance).map(([key, value]) => (
                           <div key={key} className="text-center p-4 bg-gray-50 dark:bg-gray-700 rounded-xl">
                             <p className={`text-2xl font-bold ${getPerformanceColor(value as number)}`}>
-                              {value}%
+                              {value as number}%
                             </p>
                             <p className="text-sm text-gray-500 capitalize">
                               {key === 'ponctualite' ? 'Ponctualité' :

@@ -1,6 +1,7 @@
 """
 Serializers pour les produits.
 """
+import json
 from rest_framework import serializers
 from .models import Produit, Categorie, Marque, Fournisseur, Bundle, ImageProduit, VarianteProduit
 
@@ -51,8 +52,40 @@ class VarianteProduitSerializer(serializers.ModelSerializer):
         ]
 
 
+class ProduitListSerializer(serializers.ModelSerializer):
+    """Serializer optimisé pour les listes de produits."""
+    categorie_nom = serializers.CharField(source='categorie.nom', read_only=True)
+    marque_nom = serializers.CharField(source='marque.nom', read_only=True)
+    entreprise_nom = serializers.CharField(source='entreprise.nom', read_only=True)
+    stock_actuel = serializers.ReadOnlyField()
+    stock_disponible = serializers.ReadOnlyField()
+    en_rupture = serializers.ReadOnlyField()
+    stock_bas = serializers.ReadOnlyField()
+    
+    # Optimisation: seulement la première image pour les listes
+    images = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Produit
+        fields = [
+            'id', 'nom', 'description_courte', 'categorie', 'categorie_nom',
+            'marque', 'marque_nom', 'entreprise', 'entreprise_nom', 'sku',
+            'prix_vente', 'prix_promotion', 'statut', 'popularite_score',
+            'nombre_vues', 'nombre_ventes', 'slug', 'en_promotion',
+            'vendable', 'visible_catalogue', 'stock_actuel', 'stock_disponible',
+            'en_rupture', 'stock_bas', 'images'
+        ]
+    
+    def get_images(self, obj):
+        """Retourne seulement la première image pour optimiser les performances."""
+        first_image = obj.images.first()
+        if first_image:
+            return [ImageProduitSerializer(first_image).data]
+        return []
+
+
 class ProduitSerializer(serializers.ModelSerializer):
-    """Serializer pour les produits."""
+    """Serializer complet pour les produits."""
     marge_beneficiaire = serializers.ReadOnlyField()
     prix_ttc = serializers.ReadOnlyField()
     stock_actuel = serializers.ReadOnlyField()
@@ -74,19 +107,77 @@ class ProduitSerializer(serializers.ModelSerializer):
             'categorie', 'categorie_nom', 'sous_categorie', 'marque', 'marque_nom',
             'entreprise', 'entreprise_nom', 'sku', 'code_barre', 'qr_code', 'prix_achat', 'prix_vente',
             'prix_promotion', 'marge_beneficiaire', 'prix_ttc', 'tva_taux',
-            'unite_mesure', 'poids', 'dimensions', 'couleurs_disponibles',
-            'tailles_disponibles', 'stock_minimum', 'stock_maximum',
-            'point_recommande', 'date_peremption', 'duree_conservation',
-            'statut', 'popularite_score', 'nombre_vues', 'nombre_ventes',
-            'slug', 'en_promotion', 'date_debut_promotion', 'date_fin_promotion',
-            'vendable', 'achetable', 'visible_catalogue', 'stock_actuel',
-            'stock_disponible', 'en_rupture', 'stock_bas', 'images', 'variantes'
+            'unite_mesure', 'couleurs_disponibles', 'tailles_disponibles', 'stock',
+            'date_peremption', 'duree_conservation', 'statut', 'popularite_score', 
+            'nombre_vues', 'nombre_ventes', 'slug', 'en_promotion', 'date_debut_promotion', 
+            'date_fin_promotion', 'vendable', 'achetable', 'visible_catalogue', 
+            'stock_actuel', 'stock_disponible', 'en_rupture', 'images', 'variantes'
         ]
         read_only_fields = [
             'qr_code', 'popularite_score', 'nombre_vues', 'nombre_ventes',
             'marge_beneficiaire', 'prix_ttc', 'stock_actuel', 'stock_disponible',
-            'en_rupture', 'stock_bas'
+            'en_rupture'
         ]
+
+
+class ProduitCreateSerializer(serializers.ModelSerializer):
+    """Serializer pour la création de produits avec images."""
+    images = serializers.ListField(
+        child=serializers.ImageField(),
+        write_only=True,
+        required=False
+    )
+    
+    # Gérer les champs JSON
+    dimensions = serializers.JSONField(required=False, allow_null=True)
+    couleurs_disponibles = serializers.JSONField(required=False, allow_null=True)
+    tailles_disponibles = serializers.JSONField(required=False, allow_null=True)
+    
+    class Meta:
+        model = Produit
+        fields = [
+            'nom', 'description_courte', 'description_longue', 'categorie',
+            'sous_categorie', 'marque', 'sku', 'code_barre', 'prix_achat',
+            'prix_vente', 'prix_promotion', 'tva_taux', 'unite_mesure',
+            'couleurs_disponibles', 'tailles_disponibles', 'stock',
+            'date_peremption', 'duree_conservation', 'statut',
+            'en_promotion', 'date_debut_promotion', 'date_fin_promotion',
+            'vendable', 'achetable', 'visible_catalogue', 'images',
+            'dimensions'  # Ajouter le champ dimensions
+        ]
+        # Champs supplémentaires pour la compatibilité avec le frontend
+        extra_kwargs = {
+            'stock_initial': {'write_only': True, 'required': False},
+            'stock_minimum': {'write_only': True, 'required': False},
+            'stock_maximum': {'write_only': True, 'required': False},
+        }
+    
+    def create(self, validated_data):
+        # Retirer les images du validated_data car elles sont gérées dans perform_create
+        validated_data.pop('images', None)
+        
+        # Retirer les champs de stock qui n'existent plus dans le modèle
+        validated_data.pop('stock_initial', None)
+        validated_data.pop('stock_minimum', None)
+        validated_data.pop('stock_maximum', None)
+        
+        # Retirer le champ dimensions qui n'existe plus dans le modèle
+        validated_data.pop('dimensions', None)
+        
+        # Traiter les champs JSON
+        if 'couleurs_disponibles' in validated_data and isinstance(validated_data['couleurs_disponibles'], str):
+            try:
+                validated_data['couleurs_disponibles'] = json.loads(validated_data['couleurs_disponibles'])
+            except json.JSONDecodeError:
+                validated_data['couleurs_disponibles'] = []
+        
+        if 'tailles_disponibles' in validated_data and isinstance(validated_data['tailles_disponibles'], str):
+            try:
+                validated_data['tailles_disponibles'] = json.loads(validated_data['tailles_disponibles'])
+            except json.JSONDecodeError:
+                validated_data['tailles_disponibles'] = []
+        
+        return super().create(validated_data)
 
 
 class FournisseurSerializer(serializers.ModelSerializer):

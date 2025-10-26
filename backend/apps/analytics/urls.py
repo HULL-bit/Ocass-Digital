@@ -1,18 +1,10 @@
-"""
-URLs pour les analytics.
-"""
-from django.urls import path, include
-from rest_framework.routers import DefaultRouter
+
+from django.urls import path
 from . import views
 
-router = DefaultRouter()
-router.register(r'reports', views.RapportPersonnaliseViewSet)
-
 urlpatterns = [
-    path('', include(router.urls)),
-    path('dashboard/', views.dashboard_metrics, name='dashboard_metrics'),
-    path('sales/', views.sales_analytics, name='sales_analytics'),
-    path('inventory/', views.inventory_analytics, name='inventory_analytics'),
-    path('customers/', views.customer_analytics, name='customer_analytics'),
-    path('financial/', views.financial_analytics, name='financial_analytics'),
+    path('dashboard-summary/', views.dashboard_summary, name='dashboard_summary'),
+    path('dashboard/', views.dashboard_analytics, name='dashboard_analytics'),
+    path('entrepreneur-dashboard/', views.entrepreneur_dashboard, name='entrepreneur_dashboard'),
+    path('client-dashboard/', views.client_dashboard, name='client_dashboard'),
 ]

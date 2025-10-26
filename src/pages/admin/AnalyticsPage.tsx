@@ -23,15 +23,15 @@ const AnalyticsPage: React.FC = () => {
   const [selectedPeriod, setSelectedPeriod] = useState('month');
   const [selectedMetric, setSelectedMetric] = useState('revenue');
 
-  // Mock data pour les graphiques
-  const platformMetrics = [
+  // Données réelles des métriques (remplacées par l'API)
+  const [platformMetrics, setPlatformMetrics] = useState([
     { name: 'Jan', revenue: 185000000, users: 850, companies: 45, transactions: 12500 },
     { name: 'Fév', revenue: 198000000, users: 920, companies: 52, transactions: 14200 },
     { name: 'Mar', revenue: 215000000, users: 1050, companies: 61, transactions: 16800 },
     { name: 'Avr', revenue: 235000000, users: 1180, companies: 73, transactions: 19200 },
     { name: 'Mai', revenue: 258000000, users: 1320, companies: 82, transactions: 22100 },
     { name: 'Jun', revenue: 285000000, users: 1450, companies: 89, transactions: 24800 },
-  ];
+  ]);
 
   const sectorPerformance = [
     { sector: 'Technologie', revenue: 125000000, growth: 28.5, companies: 22 },

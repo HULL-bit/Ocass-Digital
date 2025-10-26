@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { Eye, EyeOff, Mail, Lock, ArrowRight } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotifications } from '../../contexts/NotificationContext';
+import loginBgVideo from './2252824-uhd_3840_2160_30fps.mp4';
 
 const LoginPage: React.FC = () => {
   console.log('LoginPage component is rendering');
@@ -18,8 +19,11 @@ const LoginPage: React.FC = () => {
   const suggestedEmails = {
     admin: [
       { email: 'admin@platform.com', name: 'Super Admin', password: 'password' },
-      { email: 'admin2@platform.com', name: 'Moussa Fall', password: 'password' },
-      { email: 'admin3@platform.com', name: 'Khadija Ndiaye', password: 'password' }
+      { email: 'admin2@platform.com', name: 'Moussa Fall', password: 'admin123' },
+      { email: 'admin3@platform.com', name: 'Khadija Ndiaye', password: 'admin123' },
+      // { email: 'admin1@platform.com', name: 'Aminata Diop', password: 'admin123' },
+      // { email: 'admin4@platform.com', name: 'Ibrahima Sow', password: 'admin123' },
+      // { email: 'admin5@platform.com', name: 'Aïcha Ba', password: 'admin123' }
     ],
     entrepreneur: [
       { email: 'fatou@pharmaciemoderne.sn', name: 'Fatou Sow (Pharmacie)', password: 'password' },
@@ -164,19 +168,13 @@ const LoginPage: React.FC = () => {
                   loop
                   playsInline
                   className="w-full h-full object-cover rounded-3xl"
+                  style={{ filter: 'brightness(0.99)' }}
                 >
-                  <source src="https://www.w3schools.com/html/mov_bbb.mp4" type="video/mp4" />
-                  <source src="https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4" type="video/mp4" />
+                  <source src={loginBgVideo} type="video/mp4" />
                 </video>
-                {/* Image de fallback si la vidéo ne charge pas */}
-                <img 
-                  src="https://images.unsplash.com/photo-1551434678-e076c223a692?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2070&q=80" 
-                  alt="OCASS DIGITAL Business" 
-                  className="w-full h-full object-cover absolute inset-0"
-                />
                 
                 {/* Overlay avec contenu */}
-                <div className="absolute inset-0 bg-gradient-to-br from-black/60 via-black/40 to-black/60 flex flex-col justify-center items-center text-white p-8">
+                <div className="absolute inset-0 bg-gradient-to-br from-black/40 via-black/30 to-black/40 flex flex-col justify-center items-center text-white p-8">
                   <motion.div
                     initial={{ scale: 0, rotate: -180 }}
                     animate={{ scale: 1, rotate: 0 }}
@@ -281,7 +279,8 @@ const LoginPage: React.FC = () => {
               Mots de passe de testts doit p
             </h3>
             <p className="text-xs text-blue-600 dark:text-blue-400">
-              Tous les comptes utilisent le mot de passe : <code className="bg-blue-100 dark:bg-blue-800 px-1 rounded font-mono">password</code>
+              <strong>Administrateurs :</strong> <code className="bg-blue-100 dark:bg-blue-800 px-1 rounded font-mono">admin123</code> (sauf admin@platform.com qui utilise <code className="bg-blue-100 dark:bg-blue-800 px-1 rounded font-mono">password</code>)<br/>
+              <strong>Autres comptes :</strong> <code className="bg-blue-100 dark:bg-blue-800 px-1 rounded font-mono">password</code>
             </p>
           </div>
         </div>

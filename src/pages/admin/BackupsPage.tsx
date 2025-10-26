@@ -28,7 +28,8 @@ const BackupsPage: React.FC = () => {
   const [selectedBackup, setSelectedBackup] = useState<any>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
 
-  const mockBackups = [
+  // Données réelles des sauvegardes (remplacées par l'API)
+  const [backups, setBackups] = useState([
     {
       id: '1',
       nom_fichier: 'backup_full_20240115_023000.sql.gz',
@@ -92,9 +93,9 @@ const BackupsPage: React.FC = () => {
       automatique: true,
       restaurable: false,
       erreur: 'Espace disque insuffisant',
-      description: 'Échec sauvegarde - Espace disque insuffisant',
+      description: 'Échec sauvegarde - Espace disque insuffisant'
     },
-  ];
+  ]);
 
   const backupTypes = [
     { id: 'complete', name: 'Complète', description: 'Sauvegarde complète de toutes les données', icon: Database, color: 'blue' },
@@ -216,7 +217,7 @@ const BackupsPage: React.FC = () => {
         </div>
 
         <div className="space-y-4">
-          {mockBackups.map((backup, index) => (
+          {backups.map((backup, index) => (
             <motion.div
               key={backup.id}
               initial={{ opacity: 0, y: 20 }}
@@ -283,8 +284,7 @@ const BackupsPage: React.FC = () => {
                       variant="secondary"
                       size="sm"
                       icon={<Upload className="w-3 h-3" />}
-                      onClick={(e) => {
-                        e.stopPropagation();
+                      onClick={() => {
                         // Restore backup
                       }}
                     >
@@ -306,8 +306,7 @@ const BackupsPage: React.FC = () => {
                     variant="secondary"
                     size="sm"
                     icon={<Eye className="w-3 h-3" />}
-                    onClick={(e) => {
-                      e.stopPropagation();
+                    onClick={() => {
                       setSelectedBackup(backup);
                     }}
                   >

@@ -101,6 +101,30 @@ class ProduitAdmin(admin.ModelAdmin):
             'categorie', 'marque', 'entreprise'
         )
     
+    def stock_display(self, obj):
+        """Affiche le stock avec couleur selon le statut."""
+        try:
+            stock = obj.stock_actuel
+            if stock <= 0:
+                return format_html(
+                    '<span style="color: #EF4444; font-weight: bold;">Rupture ({})</span>',
+                    stock
+                )
+            elif stock <= obj.stock_minimum:
+                return format_html(
+                    '<span style="color: #F59E0B; font-weight: bold;">Stock bas ({})</span>',
+                    stock
+                )
+            else:
+                return format_html(
+                    '<span style="color: #10B981;">{}</span>',
+                    stock
+                )
+        except Exception:
+            return "N/A"
+    stock_display.short_description = 'Stock'
+    stock_display.admin_order_field = 'stock_actuel'
+    
     def colored_name(self, obj):
         """Affiche le nom avec une couleur selon le statut."""
         colors = {
@@ -121,20 +145,31 @@ class ProduitAdmin(admin.ModelAdmin):
 @admin.register(ImageProduit)
 class ImageProduitAdmin(admin.ModelAdmin):
     """Administration des images de produits."""
-    list_display = ['produit', 'image_preview', 'alt_text', 'ordre_affichage', 'principale']
-    list_filter = ['principale', 'date_creation']
-    search_fields = ['produit__nom', 'alt_text']
+    list_display = ['produit', 'image_preview', 'alt_text', 'ordre_affichage', 'principale', 'couleur', 'taille']
+    list_filter = ['principale', 'date_creation', 'couleur', 'taille']
+    search_fields = ['produit__nom', 'alt_text', 'couleur', 'taille']
     ordering = ['produit', 'ordre_affichage']
+    readonly_fields = ['image_preview_large']
     
     def image_preview(self, obj):
         """Affiche un aperçu de l'image."""
         if obj.image:
             return format_html(
-                '<img src="{}" width="50" height="50" style="object-fit: cover;" />',
+                '<img src="{}" width="50" height="50" style="object-fit: cover; border-radius: 4px;" />',
                 obj.image.url
             )
         return "Aucune image"
     image_preview.short_description = 'Aperçu'
+    
+    def image_preview_large(self, obj):
+        """Affiche un aperçu plus grand de l'image."""
+        if obj.image:
+            return format_html(
+                '<img src="{}" width="200" height="200" style="object-fit: cover; border-radius: 8px;" />',
+                obj.image.url
+            )
+        return "Aucune image"
+    image_preview_large.short_description = 'Aperçu détaillé'
 
 
 @admin.register(VarianteProduit)

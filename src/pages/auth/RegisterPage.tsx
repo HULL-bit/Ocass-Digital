@@ -8,6 +8,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useNotifications } from '../../contexts/NotificationContext';
 import apiService from '../../services/api/realApi';
 import * as yup from 'yup';
+import registerBgVideo from './2252824-uhd_3840_2160_30fps.mp4';
 
 const RegisterPage: React.FC = () => {
   const [selectedRole, setSelectedRole] = useState<'entrepreneur' | 'client'>('entrepreneur');
@@ -235,42 +236,37 @@ const RegisterPage: React.FC = () => {
       const entrepreneurData = {
         // Données utilisateur
         email: data.email.trim(),
-        firstName: data.firstName.trim(),
-        lastName: data.lastName.trim(),
-        phone: data.phone.trim(),
+        first_name: data.firstName.trim(),
+        last_name: data.lastName.trim(),
+        telephone: data.phone.trim(),
         type_utilisateur: 'entrepreneur',
         password: data.password,
-        confirmPassword: data.confirmPassword,
+        confirm_password: data.confirmPassword,
         
         // Données entreprise
         entreprise: {
-          nom: data.companyName?.trim() || 'Entreprise',
-          description: data.companyDescription?.trim() || 'Description de l\'entreprise',
-          secteur_activite: data.sector || 'Commerce',
+          nom: data.companyName?.trim() || `Entreprise ${data.firstName} ${data.lastName}`,
+          description: data.companyDescription?.trim() || `Entreprise créée automatiquement pour ${data.firstName} ${data.lastName}`,
+          secteur_activite: data.sector || 'commerce',
           forme_juridique: data.legalForm || 'SARL',
           siret: data.siret?.trim() || null,
-          adresse_complete: data.companyAddress?.trim() || 'Adresse non renseignée',
+          adresse_complete: data.companyAddress?.trim() || 'Adresse à compléter',
           telephone: data.companyPhone?.trim() || data.phone,
           email: data.companyEmail?.trim() || data.email,
           site_web: data.website?.trim() || null,
-          couleur_primaire: data.primaryColor || '#3B82F6',
-          couleur_secondaire: data.secondaryColor || '#1E40AF',
-          devise_principale: data.currency || 'XOF',
-          fuseau_horaire: data.timezone || 'Africa/Dakar',
-          nombre_employes: data.employeeCount || 1,
-          chiffre_affaires_annuel: data.annualRevenue || 0,
+          ville: 'Dakar',
+          region: 'Dakar',
+          pays: 'Sénégal',
         },
-        
-        // Préférences
-        langue: data.language || 'fr',
-        theme_interface: 'light',
-        preferences_notifications: data.notifications || true,
       };
       
       console.log('Données d\'inscription entrepreneur:', entrepreneurData);
       
       const response = await apiService.register(entrepreneurData);
       console.log('Réponse d\'inscription:', response);
+      
+      // Afficher un message de succès plus détaillé
+      alert(`Inscription entrepreneur réussie ! Bienvenue ${entrepreneurData.firstName} ${entrepreneurData.lastName}.`);
       
       addNotification({
         type: 'success',
@@ -391,18 +387,21 @@ const RegisterPage: React.FC = () => {
       
       const clientData = {
         email: clientFormData.email.trim(),
-        firstName: clientFormData.firstName.trim(),
-        lastName: clientFormData.lastName.trim(),
-        phone: clientFormData.phone.trim(),
+        first_name: clientFormData.firstName.trim(),
+        last_name: clientFormData.lastName.trim(),
+        telephone: clientFormData.phone.trim(),
         type_utilisateur: 'client',
         password: clientFormData.password,
-        confirmPassword: clientFormData.confirmPassword,
+        confirm_password: clientFormData.confirmPassword,
       };
       
       console.log('Données d\'inscription client:', clientData);
       
       const response = await apiService.register(clientData);
       console.log('Réponse d\'inscription client:', response);
+      
+      // Afficher un message de succès plus détaillé
+      alert(`Inscription client réussie ! Bienvenue ${clientData.firstName} ${clientData.lastName}.`);
       
       addNotification({
         type: 'success',
@@ -510,19 +509,13 @@ const RegisterPage: React.FC = () => {
                   loop
                   playsInline
                   className="w-full h-full object-cover rounded-3xl"
+                  style={{ filter: 'brightness(0.99)' }}
                 >
-                  <source src="https://www.w3schools.com/html/mov_bbb.mp4" type="video/mp4" />
-                  <source src="https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_2mb.mp4" type="video/mp4" />
+                  <source src={registerBgVideo} type="video/mp4" />
                 </video>
-                {/* Image de fallback si la vidéo ne charge pas */}
-                <img 
-                  src="https://images.unsplash.com/photo-1551434678-e076c223a692?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2070&q=80" 
-                  alt="OCASS DIGITAL Business" 
-                  className="w-full h-full object-cover absolute inset-0"
-                />
                 
                 {/* Overlay avec contenu */}
-                <div className="absolute inset-0 bg-gradient-to-br from-black/60 via-black/40 to-black/60 flex flex-col justify-center items-center text-white p-8">
+                <div className="absolute inset-0 bg-gradient-to-br from-black/40 via-black/30 to-black/40 flex flex-col justify-center items-center text-white p-8">
                   <motion.div
                     initial={{ scale: 0, rotate: -180 }}
                     animate={{ scale: 1, rotate: 0 }}

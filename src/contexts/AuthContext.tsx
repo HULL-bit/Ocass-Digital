@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 // import { useWebSocket } from '../hooks/useWebSocket'; // Disabled to avoid circular dependency
 import apiService from '../services/api/realApi';
+import dataSyncService from '../services/sync/DataSyncService';
+import { getAvatarWithFallback } from '../utils/avatarUtils';
 
 interface User {
   id: string;
@@ -97,7 +99,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           firstName: response.user.first_name || response.user.nom_complet?.split(' ')[0] || '',
           lastName: response.user.last_name || response.user.nom_complet?.split(' ').slice(1).join(' ') || '',
           role: response.user.type_utilisateur,
-          avatar: response.user.avatar,
+          avatar: getAvatarWithFallback(response.user.avatar, response.user.email),
           company: response.user.entreprise ? {
             id: response.user.entreprise.id,
             name: response.user.entreprise.nom,
@@ -114,6 +116,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         
         setUser(userData);
         localStorage.setItem('user', JSON.stringify(userData));
+        
+        // Redémarrer la synchronisation des données
+        dataSyncService.restart();
+        
         return true;
       }
       
@@ -129,6 +135,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const logout = () => {
     apiService.logout();
     setUser(null);
+    
+    // Arrêter la synchronisation des données
+    dataSyncService.destroy();
   };
 
   const updateUser = (updates: Partial<User>) => {

@@ -29,6 +29,7 @@ import MetricCard from '../../components/ui/MetricCard';
 import AnimatedForm from '../../components/forms/AnimatedForm';
 import apiService from '../../services/api/realApi';
 import * as yup from 'yup';
+import { getAvatarWithFallback } from '../../utils/avatarUtils';
 
 const ProjectsPage: React.FC = () => {
   const [selectedTab, setSelectedTab] = useState('all');
@@ -36,7 +37,8 @@ const ProjectsPage: React.FC = () => {
   const [showProjectForm, setShowProjectForm] = useState(false);
   const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban');
 
-  const mockProjects = [
+  // Données réelles des projets (remplacées par l'API)
+  const [projects, setProjects] = useState([
     {
       id: '1',
       nom: 'Site E-commerce Boutique Marie',
@@ -51,11 +53,11 @@ const ProjectsPage: React.FC = () => {
       responsable: {
         id: '1',
         nom: 'Amadou Ba',
-        avatar: 'https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=2',
+        avatar: getAvatarWithFallback(null, 'user1@exemple.com'),
       },
       equipe: [
-        { id: '1', nom: 'Fatou Sow', role: 'Designer', avatar: 'https://images.pexels.com/photos/3992656/pexels-photo-3992656.png?auto=compress&cs=tinysrgb&w=150&h=150&dpr=2' },
-        { id: '2', nom: 'Ousmane Diallo', role: 'Développeur', avatar: 'https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=2' },
+        { id: '1', nom: 'Fatou Sow', role: 'Designer', avatar: getAvatarWithFallback(null, 'fatou@exemple.com') },
+        { id: '2', nom: 'Ousmane Diallo', role: 'Développeur', avatar: getAvatarWithFallback(null, 'ousmane@exemple.com') },
       ],
       date_debut: '2024-01-01',
       date_fin_prevue: '2024-03-15',
@@ -93,10 +95,10 @@ const ProjectsPage: React.FC = () => {
       responsable: {
         id: '1',
         nom: 'Amadou Ba',
-        avatar: 'https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=2',
+        avatar: getAvatarWithFallback(null, 'user1@exemple.com'),
       },
       equipe: [
-        { id: '3', nom: 'Khadija Fall', role: 'Analyste', avatar: 'https://images.pexels.com/photos/3992656/pexels-photo-3992656.png?auto=compress&cs=tinysrgb&w=150&h=150&dpr=2' },
+        { id: '3', nom: 'Khadija Fall', role: 'Analyste', avatar: getAvatarWithFallback(null, 'khadija@exemple.com') },
       ],
       date_debut: '2023-12-01',
       date_fin_prevue: '2024-02-29',
@@ -133,11 +135,11 @@ const ProjectsPage: React.FC = () => {
       responsable: {
         id: '1',
         nom: 'Amadou Ba',
-        avatar: 'https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=2',
+        avatar: getAvatarWithFallback(null, 'user1@exemple.com'),
       },
       equipe: [
-        { id: '4', nom: 'Ibrahima Sarr', role: 'Dev Mobile', avatar: 'https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=2' },
-        { id: '5', nom: 'Mariama Thiam', role: 'UX Designer', avatar: 'https://images.pexels.com/photos/3992656/pexels-photo-3992656.png?auto=compress&cs=tinysrgb&w=150&h=150&dpr=2' },
+        { id: '4', nom: 'Ibrahima Sarr', role: 'Dev Mobile', avatar: getAvatarWithFallback(null, 'ibrahima@exemple.com') },
+        { id: '5', nom: 'Mariama Thiam', role: 'UX Designer', avatar: getAvatarWithFallback(null, 'mariama@exemple.com') },
       ],
       date_debut: '2024-01-15',
       date_fin_prevue: '2024-04-30',
@@ -160,10 +162,10 @@ const ProjectsPage: React.FC = () => {
         { description: 'Délai serré pour livraison', probabilite: 60, impact: 50, score: 30 },
       ],
     },
-  ];
+  ]);
 
   const projectStatuses = [
-    { id: 'all', name: 'Tous', count: mockProjects.length },
+    { id: 'all', name: 'Tous', count: projects.length },
     { id: 'planifie', name: 'Planifiés', count: 1 },
     { id: 'en_cours', name: 'En Cours', count: 2 },
     { id: 'termine', name: 'Terminés', count: 0 },
@@ -553,7 +555,7 @@ const ProjectsPage: React.FC = () => {
           {viewMode === 'kanban' ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               <AnimatePresence>
-                {mockProjects.map((project) => (
+                {projects.map((project) => (
                   <ProjectCard key={project.id} project={project} />
                 ))}
               </AnimatePresence>
@@ -584,7 +586,7 @@ const ProjectsPage: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="bg-white dark:bg-dark-800 divide-y divide-gray-200 dark:divide-gray-700">
-                  {mockProjects.map((project) => (
+                  {projects.map((project) => (
                     <tr key={project.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
                       <td className="px-6 py-4">
                         <div>

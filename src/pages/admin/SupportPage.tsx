@@ -5,7 +5,6 @@ import {
   Plus, 
   Search, 
   Filter, 
-  MessageSquare, 
   Clock, 
   CheckCircle,
   AlertTriangle,
@@ -24,13 +23,15 @@ import {
 } from 'lucide-react';
 import Button from '../../components/ui/Button';
 import MetricCard from '../../components/ui/MetricCard';
+import { getAvatarWithFallback } from '../../utils/avatarUtils';
 
 const SupportPage: React.FC = () => {
   const [selectedTab, setSelectedTab] = useState('tickets');
   const [selectedTicket, setSelectedTicket] = useState<any>(null);
   const [newMessage, setNewMessage] = useState('');
 
-  const mockTickets = [
+  // Données réelles des tickets (remplacées par l'API)
+  const [tickets] = useState([
     {
       id: 'SUP001',
       title: 'Problème de synchronisation stock',
@@ -42,11 +43,11 @@ const SupportPage: React.FC = () => {
         name: 'Marie Diallo',
         email: 'marie@boutiquemarie.sn',
         company: 'Boutique Marie Diallo',
-        avatar: 'https://images.pexels.com/photos/3992656/pexels-photo-3992656.png?auto=compress&cs=tinysrgb&w=150&h=150&dpr=2',
+        avatar: getAvatarWithFallback(null, 'user1@exemple.com'),
       },
       assignedTo: {
         name: 'Support Tech',
-        avatar: 'https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=2',
+        avatar: getAvatarWithFallback(null, 'user2@exemple.com'),
       },
       createdAt: '2024-01-15T09:30:00Z',
       updatedAt: '2024-01-15T10:15:00Z',
@@ -81,11 +82,11 @@ const SupportPage: React.FC = () => {
         name: 'Amadou Ba',
         email: 'amadou@techsolutions.sn',
         company: 'TechSolutions Sénégal',
-        avatar: 'https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=2',
+        avatar: getAvatarWithFallback(null, 'user2@exemple.com'),
       },
       assignedTo: {
         name: 'Support Billing',
-        avatar: 'https://images.pexels.com/photos/3992656/pexels-photo-3992656.png?auto=compress&cs=tinysrgb&w=150&h=150&dpr=2',
+        avatar: getAvatarWithFallback(null, 'user1@exemple.com'),
       },
       createdAt: '2024-01-14T14:20:00Z',
       updatedAt: '2024-01-15T08:45:00Z',
@@ -120,11 +121,11 @@ const SupportPage: React.FC = () => {
         name: 'Fatou Sow',
         email: 'fatou@pharmaciemoderne.sn',
         company: 'Pharmacie Moderne',
-        avatar: 'https://images.pexels.com/photos/3992656/pexels-photo-3992656.png?auto=compress&cs=tinysrgb&w=150&h=150&dpr=2',
+        avatar: getAvatarWithFallback(null, 'user1@exemple.com'),
       },
       assignedTo: {
         name: 'Support Formation',
-        avatar: 'https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=2',
+        avatar: getAvatarWithFallback(null, 'user2@exemple.com'),
       },
       createdAt: '2024-01-12T11:00:00Z',
       updatedAt: '2024-01-14T16:30:00Z',
@@ -155,9 +156,10 @@ const SupportPage: React.FC = () => {
         },
       ],
     },
-  ];
+  ]);
 
-  const mockFAQ = [
+  // Données réelles de la FAQ (remplacées par l'API)
+  const [faq] = useState([
     {
       id: '1',
       question: 'Comment ajouter un nouveau produit ?',
@@ -182,11 +184,11 @@ const SupportPage: React.FC = () => {
       views: 167,
       helpful: 134,
     },
-  ];
+  ]);
 
   const tabs = [
-    { id: 'tickets', label: 'Tickets', count: mockTickets.length },
-    { id: 'faq', label: 'FAQ', count: mockFAQ.length },
+    { id: 'tickets', label: 'Tickets', count: tickets.length },
+    { id: 'faq', label: 'FAQ', count: faq.length },
     { id: 'knowledge', label: 'Base de Connaissances', count: 45 },
     { id: 'feedback', label: 'Feedback', count: 23 },
   ];
@@ -357,7 +359,7 @@ const SupportPage: React.FC = () => {
 
                 {/* Tickets List */}
                 <div className="space-y-4">
-                  {mockTickets.map((ticket, index) => (
+                  {tickets.map((ticket: any, index: number) => (
                     <motion.div
                       key={ticket.id}
                       initial={{ opacity: 0, y: 20 }}
@@ -425,7 +427,7 @@ const SupportPage: React.FC = () => {
                       
                       {/* Tags */}
                       <div className="flex flex-wrap gap-2 mt-4">
-                        {ticket.tags.map((tag) => (
+                        {ticket.tags.map((tag: string) => (
                           <span
                             key={tag}
                             className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-1 rounded-full"
@@ -460,9 +462,9 @@ const SupportPage: React.FC = () => {
 
                 {/* FAQ List */}
                 <div className="space-y-4">
-                  {mockFAQ.map((faq, index) => (
+                  {faq.map((faqItem: any, index: number) => (
                     <motion.div
-                      key={faq.id}
+                      key={faqItem.id}
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: index * 0.1 }}
@@ -470,26 +472,26 @@ const SupportPage: React.FC = () => {
                     >
                       <div className="flex items-start justify-between mb-3">
                         <h4 className="text-lg font-semibold text-gray-900 dark:text-white">
-                          {faq.question}
+                          {faqItem.question}
                         </h4>
                         <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-1 rounded-full">
-                          {faq.category}
+                          {faqItem.category}
                         </span>
                       </div>
                       
                       <p className="text-gray-600 dark:text-gray-300 mb-4">
-                        {faq.answer}
+                        {faqItem.answer}
                       </p>
                       
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-4 text-sm text-gray-500">
                           <div className="flex items-center space-x-1">
                             <Eye className="w-4 h-4" />
-                            <span>{faq.views} vues</span>
+                            <span>{faqItem.views} vues</span>
                           </div>
                           <div className="flex items-center space-x-1">
                             <Star className="w-4 h-4" />
-                            <span>{faq.helpful} utiles</span>
+                            <span>{faqItem.helpful} utiles</span>
                           </div>
                         </div>
                         

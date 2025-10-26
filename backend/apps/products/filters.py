@@ -43,6 +43,13 @@ class ProduitFilter(django_filters.FilterSet):
         lookup_expr='icontains'
     )
     
+    # Filtrage par entreprise
+    entreprise = django_filters.CharFilter(
+        field_name='entreprise__id',
+        lookup_expr='exact',
+        help_text="ID de l'entreprise"
+    )
+    
     # Filtrage par disponibilité
     en_stock = django_filters.BooleanFilter(
         method='filter_en_stock',
@@ -62,7 +69,7 @@ class ProduitFilter(django_filters.FilterSet):
     
     class Meta:
         model = Produit
-        fields = ['categorie', 'prix_min', 'prix_max', 'statut', 'marque', 'en_stock', 'en_promotion', 'search']
+        fields = ['categorie', 'prix_min', 'prix_max', 'statut', 'marque', 'entreprise', 'en_stock', 'en_promotion', 'search']
     
     def filter_en_stock(self, queryset, name, value):
         """Filtre les produits en stock."""

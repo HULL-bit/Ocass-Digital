@@ -32,8 +32,11 @@ import CustomersPage from '../pages/entrepreneur/CustomersPage';
 import ProjectsPage from '../pages/entrepreneur/ProjectsPage';
 import BillingPage from '../pages/entrepreneur/BillingPage';
 import SuppliersPage from '../pages/entrepreneur/SuppliersPage';
+import AddProduct from '../pages/entrepreneur/AddProduct';
+import AddCompany from '../pages/entrepreneur/AddCompany';
 import Button from '../components/ui/Button';
 import { useState } from 'react';
+import { getAvatarWithFallback } from '../utils/avatarUtils';
 
 const EntrepreneurLayout: React.FC = () => {
   const { user, logout } = useAuth();
@@ -135,10 +138,18 @@ const EntrepreneurLayout: React.FC = () => {
             {/* Quick Actions */}
             <div className="p-4 border-b border-gray-200 dark:border-gray-700">
               <div className="grid grid-cols-2 gap-2">
-                <Button variant="primary" size="sm" icon={<ShoppingCart className="w-4 h-4" />}>
+                <Button 
+                  className="bg-gradient-to-r from-gray-800 to-gray-900 dark:from-gray-700 dark:to-gray-800 text-white hover:from-gray-700 hover:to-gray-800 dark:hover:from-gray-600 dark:hover:to-gray-700" 
+                  size="sm" 
+                  icon={<ShoppingCart className="w-4 h-4" />}
+                >
                   Vente
                 </Button>
-                <Button variant="secondary" size="sm" icon={<Plus className="w-4 h-4" />}>
+                <Button 
+                  className="bg-gradient-to-r from-gray-800 to-gray-900 dark:from-gray-700 dark:to-gray-800 text-white hover:from-gray-700 hover:to-gray-800 dark:hover:from-gray-600 dark:hover:to-gray-700" 
+                  size="sm" 
+                  icon={<Plus className="w-4 h-4" />}
+                >
                   Produit
                 </Button>
               </div>
@@ -165,7 +176,7 @@ const EntrepreneurLayout: React.FC = () => {
             <div className="p-4 border-t border-gray-200 dark:border-gray-700">
               <div className="flex items-center space-x-3 mb-4">
                 <img
-                  src={user?.avatar || 'https://images.pexels.com/photos/3992656/pexels-photo-3992656.png?auto=compress&cs=tinysrgb&w=150&h=150&dpr=2'}
+                  src={getAvatarWithFallback(user?.avatar || null, user?.email || '')}
                   alt={user?.firstName}
                   className="w-10 h-10 rounded-full object-cover"
                 />
@@ -174,13 +185,14 @@ const EntrepreneurLayout: React.FC = () => {
                     {user?.firstName} {user?.lastName}
                   </p>
                   <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                    
                     Entrepreneur
                   </p>
                 </div>
               </div>
               
               <Button
-                variant="danger"
+                className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white"
                 size="sm"
                 fullWidth
                 icon={<LogOut className="w-4 h-4" />}
@@ -283,6 +295,8 @@ const EntrepreneurLayout: React.FC = () => {
             <Route path="/suppliers" element={
               <SuppliersPage />
             } />
+            <Route path="/add-product" element={<AddProduct />} />
+            <Route path="/add-company" element={<AddCompany />} />
             <Route path="/*" element={<DashboardMetrics userRole="entrepreneur" />} />
           </Routes>
         </main>

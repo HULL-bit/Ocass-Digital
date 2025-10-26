@@ -6,16 +6,19 @@ import * as yup from 'yup';
 
 interface ProductFormData {
   nom: string;
-  description: string;
-  prix: number;
-  prix_promotion: number;
-  stock: number;
+  description_courte: string;
+  description_longue: string;
+  prix_achat: number;
+  prix_vente: number;
   stock_minimum: number;
+  stock_maximum: number;
+  stock_initial: number;
   categorie: string;
-  marque: string;
   code_barre: string;
-  poids: number;
-  dimensions: string;
+  sku: string;
+  tva_taux: number;
+  date_peremption: string;
+  duree_conservation: number;
   couleur: string;
   materiau: string;
   images: File[];
@@ -37,16 +40,19 @@ const ProductForm: React.FC<ProductFormProps> = ({
 }) => {
   const [formData, setFormData] = useState<ProductFormData>({
     nom: '',
-    description: '',
-    prix: 0,
-    prix_promotion: 0,
-    stock: 0,
-    stock_minimum: 5,
+    description_courte: '',
+    description_longue: '',
+    prix_achat: 0,
+    prix_vente: 0,
+    stock_minimum: 0,
+    stock_maximum: 0,
+    stock_initial: 0,
     categorie: '',
-    marque: '',
     code_barre: '',
-    poids: 0,
-    dimensions: '',
+    sku: '',
+    tva_taux: 18.0,
+    date_peremption: '',
+    duree_conservation: 0,
     couleur: '',
     materiau: '',
     images: [],
@@ -59,12 +65,13 @@ const ProductForm: React.FC<ProductFormProps> = ({
 
   const validationSchema = yup.object().shape({
     nom: yup.string().required('Le nom est requis'),
-    description: yup.string().required('La description est requise'),
-    prix: yup.number().positive('Le prix doit être positif').required('Le prix est requis'),
-    stock: yup.number().min(0, 'Le stock ne peut pas être négatif').required('Le stock est requis'),
-    stock_minimum: yup.number().min(0, 'Le stock minimum ne peut pas être négatif'),
+    description_courte: yup.string().required('La description courte est requise'),
+    prix_achat: yup.number().positive('Le prix d\'achat doit être positif').required('Le prix d\'achat est requis'),
+    prix_vente: yup.number().positive('Le prix de vente doit être positif').required('Le prix de vente est requis'),
+    stock_minimum: yup.number().min(0, 'Le stock minimum ne peut pas être négatif').required('Le stock minimum est requis'),
+    stock_initial: yup.number().min(0, 'Le stock initial ne peut pas être négatif').required('Le stock initial est requis'),
     categorie: yup.string().required('La catégorie est requise'),
-    marque: yup.string().required('La marque est requise'),
+    sku: yup.string().required('Le SKU est requis'),
   });
 
   const handleInputChange = (field: keyof ProductFormData, value: any) => {
@@ -77,7 +84,23 @@ const ProductForm: React.FC<ProductFormProps> = ({
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || []);
-    setFormData(prev => ({ ...prev, images: [...prev.images, ...files] }));
+    
+    // Validation des fichiers
+    const validFiles = files.filter(file => {
+      if (!file.type.startsWith('image/')) {
+        alert(`Le fichier ${file.name} n'est pas une image valide.`);
+        return false;
+      }
+      if (file.size > 5 * 1024 * 1024) { // 5MB max
+        alert(`L'image ${file.name} est trop volumineuse (max 5MB).`);
+        return false;
+      }
+      return true;
+    });
+    
+    // Limiter à 5 images maximum
+    const newImages = [...formData.images, ...validFiles].slice(0, 5);
+    setFormData(prev => ({ ...prev, images: newImages }));
   };
 
   const removeImage = (index: number) => {
@@ -178,67 +201,112 @@ const ProductForm: React.FC<ProductFormProps> = ({
 
         <div>
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Description *
+            Description Courte *
           </label>
           <textarea
-            value={formData.description}
-            onChange={(e) => handleInputChange('description', e.target.value)}
-            className={`input-premium w-full h-24 resize-none ${errors.description ? 'border-red-500' : ''}`}
-            placeholder="Décrivez le produit en détail..."
+            value={formData.description_courte}
+            onChange={(e) => handleInputChange('description_courte', e.target.value)}
+            className={`input-premium w-full h-24 resize-none ${errors.description_courte ? 'border-red-500' : ''}`}
+            placeholder="Description courte du produit..."
           />
-          {errors.description && <p className="text-red-500 text-sm mt-1">{errors.description}</p>}
+          {errors.description_courte && <p className="text-red-500 text-sm mt-1">{errors.description_courte}</p>}
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Description Longue
+          </label>
+          <textarea
+            value={formData.description_longue}
+            onChange={(e) => handleInputChange('description_longue', e.target.value)}
+            className="input-premium w-full h-24 resize-none"
+            placeholder="Description détaillée du produit..."
+          />
         </div>
 
         {/* Prix et stock */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Prix (XOF) *
+              Prix d'Achat (XOF) *
             </label>
             <input
               type="number"
-              value={formData.prix}
-              onChange={(e) => handleInputChange('prix', parseFloat(e.target.value) || 0)}
-              className={`input-premium w-full ${errors.prix ? 'border-red-500' : ''}`}
+              value={formData.prix_achat}
+              onChange={(e) => handleInputChange('prix_achat', parseFloat(e.target.value) || 0)}
+              className={`input-premium w-full ${errors.prix_achat ? 'border-red-500' : ''}`}
               placeholder="0"
               min="0"
               step="0.01"
             />
-            {errors.prix && <p className="text-red-500 text-sm mt-1">{errors.prix}</p>}
+            {errors.prix_achat && <p className="text-red-500 text-sm mt-1">{errors.prix_achat}</p>}
           </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Prix promotion (XOF)
+              Prix de Vente (XOF) *
             </label>
             <input
               type="number"
-              value={formData.prix_promotion}
-              onChange={(e) => handleInputChange('prix_promotion', parseFloat(e.target.value) || 0)}
-              className="input-premium w-full"
+              value={formData.prix_vente}
+              onChange={(e) => handleInputChange('prix_vente', parseFloat(e.target.value) || 0)}
+              className={`input-premium w-full ${errors.prix_vente ? 'border-red-500' : ''}`}
               placeholder="0"
               min="0"
               step="0.01"
             />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Stock *
-            </label>
-            <input
-              type="number"
-              value={formData.stock}
-              onChange={(e) => handleInputChange('stock', parseInt(e.target.value) || 0)}
-              className={`input-premium w-full ${errors.stock ? 'border-red-500' : ''}`}
-              placeholder="0"
-              min="0"
-            />
-            {errors.stock && <p className="text-red-500 text-sm mt-1">{errors.stock}</p>}
+            {errors.prix_vente && <p className="text-red-500 text-sm mt-1">{errors.prix_vente}</p>}
           </div>
         </div>
 
-        {/* Catégorie et code barre */}
+        {/* Stock */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Stock Minimum *
+            </label>
+            <input
+              type="number"
+              value={formData.stock_minimum}
+              onChange={(e) => handleInputChange('stock_minimum', parseInt(e.target.value) || 0)}
+              className={`input-premium w-full ${errors.stock_minimum ? 'border-red-500' : ''}`}
+              placeholder="0"
+              min="0"
+            />
+            {errors.stock_minimum && <p className="text-red-500 text-sm mt-1">{errors.stock_minimum}</p>}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Stock Maximum
+            </label>
+            <input
+              type="number"
+              value={formData.stock_maximum}
+              onChange={(e) => handleInputChange('stock_maximum', parseInt(e.target.value) || 0)}
+              className="input-premium w-full"
+              placeholder="0"
+              min="0"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Stock Initial *
+            </label>
+            <input
+              type="number"
+              value={formData.stock_initial}
+              onChange={(e) => handleInputChange('stock_initial', parseInt(e.target.value) || 0)}
+              className={`input-premium w-full ${errors.stock_initial ? 'border-red-500' : ''}`}
+              placeholder="0"
+              min="0"
+            />
+            {errors.stock_initial && <p className="text-red-500 text-sm mt-1">{errors.stock_initial}</p>}
+          </div>
+        </div>
+
+        {/* Catégorie et SKU */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -265,6 +333,23 @@ const ProductForm: React.FC<ProductFormProps> = ({
 
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              SKU *
+            </label>
+            <input
+              type="text"
+              value={formData.sku}
+              onChange={(e) => handleInputChange('sku', e.target.value)}
+              className={`input-premium w-full ${errors.sku ? 'border-red-500' : ''}`}
+              placeholder="Ex: PROD-001"
+            />
+            {errors.sku && <p className="text-red-500 text-sm mt-1">{errors.sku}</p>}
+          </div>
+        </div>
+
+        {/* Code-barres et TVA */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               Code-barres
             </label>
             <input
@@ -273,6 +358,22 @@ const ProductForm: React.FC<ProductFormProps> = ({
               onChange={(e) => handleInputChange('code_barre', e.target.value)}
               className="input-premium w-full"
               placeholder="Ex: 1234567890123"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Taux TVA (%)
+            </label>
+            <input
+              type="number"
+              value={formData.tva_taux}
+              onChange={(e) => handleInputChange('tva_taux', parseFloat(e.target.value) || 0)}
+              className="input-premium w-full"
+              placeholder="18"
+              min="0"
+              max="100"
+              step="0.01"
             />
           </div>
         </div>
@@ -307,19 +408,25 @@ const ProductForm: React.FC<ProductFormProps> = ({
           {formData.images.length > 0 && (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
               {formData.images.map((image, index) => (
-                <div key={index} className="relative">
+                <div key={index} className="relative group">
                   <img
                     src={URL.createObjectURL(image)}
                     alt={`Preview ${index + 1}`}
-                    className="w-full h-24 object-cover rounded-lg"
+                    className="w-full h-24 object-cover rounded-lg border border-gray-200"
+                    onError={(e) => {
+                      e.currentTarget.src = 'https://images.pexels.com/photos/33239/wheat-field-wheat-yellow-grain.jpg?auto=compress&cs=tinysrgb&w=400&h=400&dpr=2';
+                    }}
                   />
                   <button
                     type="button"
                     onClick={() => removeImage(index)}
-                    className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600"
+                    className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
                   >
                     <X className="w-3 h-3" />
                   </button>
+                  <div className="absolute bottom-1 left-1 bg-black bg-opacity-50 text-white text-xs px-1 rounded">
+                    {index + 1}
+                  </div>
                 </div>
               ))}
             </div>

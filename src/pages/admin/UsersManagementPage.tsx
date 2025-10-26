@@ -29,6 +29,7 @@ import Button from '../../components/ui/Button';
 import DataTable from '../../components/ui/DataTable';
 import MetricCard from '../../components/ui/MetricCard';
 import apiService from '../../services/api/realApi';
+import { getAvatarWithFallback } from '../../utils/avatarUtils';
 
 const UsersManagementPage: React.FC = () => {
   const [selectedTab, setSelectedTab] = useState('all');
@@ -65,7 +66,7 @@ const UsersManagementPage: React.FC = () => {
         role: user.type_utilisateur,
         company: user.entreprise?.nom || null,
         phone: user.telephone,
-        avatar: user.avatar || 'https://images.pexels.com/photos/1040880/pexels-photo-1040880.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=2',
+        avatar: getAvatarWithFallback(user.avatar, user.email),
         status: user.statut === 'actif' ? 'active' : 'suspended',
         lastLogin: user.date_derniere_connexion,
         joinDate: user.date_creation,
@@ -128,8 +129,8 @@ const UsersManagementPage: React.FC = () => {
       }
       
       console.error('Message d\'erreur:', errorMessage);
-      // En cas d'erreur, utiliser les données mockées comme fallback
-      setUsers(mockUsers);
+      // En cas d'erreur, utiliser les données en cache ou vides
+      setUsers([]);
     } finally {
       setLoading(false);
     }

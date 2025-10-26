@@ -107,10 +107,10 @@ ASGI_APPLICATION = 'config.asgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.contrib.gis.db.backends.postgis',
-        'NAME': env('DB_NAME', default='commercial_platform'),
-        'USER': env('DB_USER', default='commercial_user'),
-        'PASSWORD': env('DB_PASSWORD', default='commercial_password'),
-        'HOST': env('DB_HOST', default='localhost'),
+        'NAME': env('DB_NAME', default='od'),
+        'USER': env('DB_USER', default='od_user'),
+        'PASSWORD': env('DB_PASSWORD', default='RRcjYdst9i3HU9CpVLf5Vcm5WWMvb68t'),
+        'HOST': env('DB_HOST', default='dpg-d3qejn0dl3ps73bsudeg-a.virginia-postgres.render.com'),
         'PORT': env('DB_PORT', default='5432'),
         'CONN_MAX_AGE': 600,
         'CONN_HEALTH_CHECKS': True,
@@ -185,8 +185,8 @@ REST_FRAMEWORK = {
         'rest_framework.throttling.UserRateThrottle'
     ],
     'DEFAULT_THROTTLE_RATES': {
-        'anon': '100/hour',
-        'user': '1000/hour'
+        'anon': '1000/hour',
+        'user': '10000/hour'
     }
 }
 

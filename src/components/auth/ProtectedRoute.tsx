@@ -14,7 +14,16 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   requiredRole, 
   requiredPermissions = [] 
 }) => {
-  const { user, loading } = useAuth();
+  // Vérification de sécurité pour éviter l'erreur AuthContext
+  let authContext;
+  try {
+    authContext = useAuth();
+  } catch (error) {
+    console.error('AuthContext not available:', error);
+    return <Navigate to="/auth/login" replace />;
+  }
+  
+  const { user, loading } = authContext;
 
   // Debug logs
   console.log('ProtectedRoute - User:', user);

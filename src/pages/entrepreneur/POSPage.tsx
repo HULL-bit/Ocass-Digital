@@ -63,14 +63,14 @@ const POSPage: React.FC = () => {
       setProducts(transformedProducts);
     } catch (error) {
       console.error('Erreur lors du chargement des produits:', error);
-      // En cas d'erreur, utiliser les données mockées comme fallback
-      setProducts(mockProducts);
+      // En cas d'erreur, utiliser les données en cache ou vides
+      setProducts([]);
     } finally {
       setLoading(false);
     }
   };
 
-  // Produits sénégalais pour le POS (fallback)
+  // Données de test (utilisées en cas d'erreur API)
   const mockProducts = [
     {
       id: '1',
