@@ -37,7 +37,7 @@ drf-spectacular==0.26.5
 # Monitoring & Logging
 sentry-sdk==1.38.0
 
-# ML & Analytics
+# ML & Analyestics
 scikit-learn==1.4.2
 pandas==2.2.2
 numpy==1.26.4

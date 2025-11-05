@@ -124,7 +124,7 @@ const AdminLayout: React.FC = () => {
             <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
               <div className="flex items-center space-x-3">
                 <img
-                  src={getAvatarWithFallback(user?.avatar, user?.email || '')}
+                  src={getAvatarWithFallback(user?.avatar, user?.email || '', user?.firstName)}
                   alt={user?.firstName}
                   className="w-10 h-10 rounded-xl object-cover border-2 border-primary-500 shadow-lg"
                 />
@@ -175,7 +175,7 @@ const AdminLayout: React.FC = () => {
             <div className="p-4 border-t border-gray-200 dark:border-gray-700">
               <div className="flex items-center space-x-3 mb-4">
                 <img
-                  src={getAvatarWithFallback(user?.avatar, user?.email || '')}
+                  src={getAvatarWithFallback(user?.avatar, user?.email || '', user?.firstName)}
                   alt={user?.firstName}
                   className="w-10 h-10 rounded-full object-cover border-2 border-primary-500 shadow-lg"
                 />

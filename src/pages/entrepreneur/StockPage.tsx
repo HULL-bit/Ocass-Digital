@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Package, 
@@ -31,8 +32,11 @@ import apiService from '../../services/api/realApi';
 import entrepreneurApiService from '../../services/api/entrepreneurApi';
 import * as yup from 'yup';
 import useDataSync from '../../hooks/useDataSync';
+import { useAuth } from '../../contexts/AuthContext';
 
 const StockPage: React.FC = () => {
+  const navigate = useNavigate();
+  const { user } = useAuth();
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
   const [showProductForm, setShowProductForm] = useState(false);
@@ -40,6 +44,10 @@ const StockPage: React.FC = () => {
   const [showSaleModal, setShowSaleModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [productToDelete, setProductToDelete] = useState<any>(null);
+  const [showImageModal, setShowImageModal] = useState(false);
+  const [productForImages, setProductForImages] = useState<any>(null);
+  const [uploadingImages, setUploadingImages] = useState(false);
+  const [selectedImages, setSelectedImages] = useState<File[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   // Utiliser le hook de synchronisation des données (automatique)
@@ -193,35 +201,174 @@ const StockPage: React.FC = () => {
   const loadProducts = async () => {
     try {
       setLoading(true);
-      const response = await apiService.getProducts();
-      console.log('Produits chargés:', response);
+      console.log('🔄 Début du chargement des produits (StockPage)...');
+      
+      // Vérifier que l'utilisateur a une entreprise
+      if (user && user.company) {
+        console.log('✅ Utilisateur avec entreprise:', {
+          userId: user.id,
+          companyId: user.company.id,
+          companyName: user.company.name
+        });
+      } else {
+        console.warn('⚠️ ATTENTION: L\'utilisateur n\'a pas d\'entreprise associée !');
+        console.warn('📋 Informations utilisateur:', {
+          id: user?.id,
+          email: user?.email,
+          role: user?.role,
+          company: user?.company
+        });
+        console.warn('💡 Le backend créera automatiquement une entreprise lors de la première création de produit.');
+      }
+      
+      // Essayer d'abord avec getAllProducts() qui récupère tous les produits
+      let response;
+      try {
+        console.log('📡 Tentative getAllProducts()...');
+        response = await apiService.getAllProducts();
+        console.log('✅ Réponse getAllProducts:', {
+          type: typeof response,
+          isArray: Array.isArray(response),
+          hasResults: response?.results !== undefined,
+          resultsLength: response?.results?.length,
+          directLength: Array.isArray(response) ? response.length : 0,
+          fullResponse: response
+        });
+      } catch (error: any) {
+        console.warn('❌ Erreur avec getAllProducts, essai avec getProducts:', error);
+        try {
+          response = await apiService.getProducts({ page_size: 100 });
+          console.log('✅ Réponse getProducts:', {
+            type: typeof response,
+            isArray: Array.isArray(response),
+            hasResults: response?.results !== undefined,
+            resultsLength: response?.results?.length
+          });
+        } catch (error2: any) {
+          console.error('❌ Erreur avec getProducts aussi:', error2);
+          throw error2;
+        }
+      }
+      
+      // Gérer différents formats de réponse
+      let productsData = [];
+      if (response && Array.isArray(response)) {
+        productsData = response;
+        console.log('✅ Produits extraits (tableau direct):', productsData.length);
+      } else if (response && response.results && Array.isArray(response.results)) {
+        productsData = response.results;
+        console.log('✅ Produits extraits (response.results):', productsData.length);
+      } else if (response && response.data && Array.isArray(response.data)) {
+        productsData = response.data;
+        console.log('✅ Produits extraits (response.data):', productsData.length);
+      } else {
+        console.warn('⚠️ Format de réponse des produits non reconnu:', response);
+        console.warn('Structure de la réponse:', JSON.stringify(response, null, 2).substring(0, 500));
+        productsData = [];
+      }
+      
+      console.log(`📦 Total produits extraits: ${productsData.length}`);
+      
+      if (productsData.length === 0) {
+        console.warn('⚠️ ATTENTION: Aucun produit trouvé !');
+        console.warn('🔍 Vérifications à faire :');
+        console.warn('  1. L\'utilisateur a-t-il une entreprise associée ?', user?.company ? '✅ Oui' : '❌ Non');
+        console.warn('  2. Des produits ont-ils été créés pour cette entreprise ?');
+        console.warn('  3. Les produits ont-ils le statut "actif" ?');
+        console.warn('  4. Le token d\'authentification est-il valide ?');
+        console.warn('  5. Le backend filtre-t-il correctement par entreprise ?');
+        
+        // Afficher les informations de l'utilisateur si disponible
+        try {
+          const userStr = localStorage.getItem('user');
+          if (userStr) {
+            const user = JSON.parse(userStr);
+            console.warn('👤 Utilisateur actuel:', {
+              id: user.id,
+              email: user.email,
+              role: user.role,
+              entreprise: user.company
+            });
+            
+            // Vérifier le token
+            const token = localStorage.getItem('token');
+            console.warn('🔑 Token présent:', !!token);
+            if (token) {
+              console.warn('🔑 Token (premiers caractères):', token.substring(0, 20) + '...');
+            }
+          }
+        } catch (e) {
+          console.warn('Impossible de lire les données utilisateur:', e);
+        }
+        
+        // Faire une requête directe pour voir la réponse brute
+        try {
+          console.log('🔍 Test de requête directe vers l\'API...');
+          const testResponse = await fetch('http://localhost:8000/api/v1/products/products/?page=1&page_size=10', {
+            headers: {
+              'Authorization': `Bearer ${localStorage.getItem('token')}`,
+              'Content-Type': 'application/json'
+            }
+          });
+          const testData = await testResponse.json();
+          console.log('🔍 Réponse directe de l\'API:', {
+            status: testResponse.status,
+            statusText: testResponse.statusText,
+            count: testData.count,
+            resultsLength: testData.results?.length || 0,
+            results: testData.results?.slice(0, 2) || []
+          });
+        } catch (testError) {
+          console.error('❌ Erreur lors du test direct:', testError);
+        }
+      } else {
+        console.log('✅ Produits trouvés ! Aperçu des 3 premiers:', productsData.slice(0, 3).map((p: any) => ({
+          id: p.id,
+          nom: p.nom,
+          entreprise: p.entreprise,
+          statut: p.statut,
+          visible_catalogue: p.visible_catalogue
+        })));
+      }
       
       // Transformer les données pour correspondre au format attendu
-      const transformedProducts = response.results?.map((product: any) => ({
+      const transformedProducts = productsData.map((product: any) => ({
         ...product,
         // Utiliser la première image disponible ou une image par défaut
         image: product.images && product.images.length > 0 ? 
-          (product.images[0].image.startsWith('http') ? product.images[0].image : `http://localhost:8000${product.images[0].image}`) :
+          (product.images[0].image_url || 
+           (product.images[0].image?.startsWith('http') ? product.images[0].image : 
+            (product.images[0].image ? `http://localhost:8000${product.images[0].image}` : ''))) :
           product.image_url || 'https://images.pexels.com/photos/33239/wheat-field-wheat-yellow-grain.jpg?auto=compress&cs=tinysrgb&w=400&h=400&dpr=2',
-        // Calculer les indicateurs de stock
-        en_rupture: product.stocks?.some((stock: any) => stock.quantite_physique === 0) || false,
-        stock_bas: product.stocks?.some((stock: any) => stock.quantite_physique <= (product.stock_minimum || 5)) || false,
-        stock_actuel: product.stocks?.reduce((total: number, stock: any) => total + stock.quantite_physique, 0) || 0,
+        // Utiliser les données de stock directement de l'API (modèle simplifié)
+        en_rupture: product.en_rupture || (product.stock_actuel || product.stock || 0) === 0,
+        stock_bas: (product.stock_actuel || product.stock || 0) <= 5,
+        stock_actuel: product.stock_actuel || product.stock || 0,
         // Formater les prix
         prix_achat: parseFloat(product.prix_achat) || 0,
         prix_vente: parseFloat(product.prix_vente) || 0,
         // Calculer la marge
-        marge_beneficiaire: product.prix_achat > 0 ? 
-          Math.round(((product.prix_vente - product.prix_achat) / product.prix_achat) * 100) : 0,
+        marge_beneficiaire: (product.prix_achat && product.prix_achat > 0) ? 
+          Math.round(((parseFloat(product.prix_vente) - parseFloat(product.prix_achat)) / parseFloat(product.prix_achat)) * 100) : 0,
         // Utiliser le nom de la catégorie
-        categorie: product.categorie_nom || 'Non classé'
-      })) || [];
+        categorie: product.categorie_nom || product.categorie?.nom || 'Non classé'
+      }));
+      
+      console.log('✅ Produits transformés:', transformedProducts.length);
+      console.log('📊 Détails des produits:', transformedProducts.map((p: any) => ({
+        id: p.id,
+        nom: p.nom,
+        stock: p.stock_actuel,
+        categorie: p.categorie
+      })));
       
       setProducts(transformedProducts);
       
       // Calculer et mettre à jour les métriques
       const metrics = calculateStockMetrics(transformedProducts);
       setStockMetrics(metrics);
+      
+      console.log('📈 Métriques calculées:', metrics);
     } catch (error) {
       console.error('Erreur lors du chargement des produits:', error);
       // En cas d'erreur, utiliser les données en cache ou vides
@@ -234,7 +381,7 @@ const StockPage: React.FC = () => {
   const loadCategories = async () => {
     try {
       const response = await apiService.getCategories();
-      console.log('Réponse des catégories:', response);
+      console.log('Réponse des catégories (StockPage):', response);
       
       // Gérer différents formats de réponse
       let categories = [];
@@ -246,19 +393,44 @@ const StockPage: React.FC = () => {
         categories = response.data;
       } else {
         console.warn('Format de réponse des catégories non reconnu:', response);
-        // Créer des catégories par défaut
+        categories = [];
+      }
+      
+      // Si aucune catégorie n'est trouvée, créer des catégories par défaut
+      if (categories.length === 0) {
+        console.warn('⚠️ Aucune catégorie trouvée. Utilisation de catégories par défaut.');
         categories = [
-          { id: '1', nom: 'Produits Généraux', description: 'Catégorie par défaut' }
+          { id: '1', nom: 'Électronique', description: 'Produits électroniques' },
+          { id: '2', nom: 'Vêtements & Mode', description: 'Vêtements et accessoires' },
+          { id: '3', nom: 'Maison & Jardin', description: 'Articles pour la maison' },
+          { id: '4', nom: 'Sport & Loisirs', description: 'Équipements sportifs' },
+          { id: '5', nom: 'Beauté & Santé', description: 'Produits de beauté et santé' },
+          { id: '6', nom: 'Alimentation', description: 'Produits alimentaires' },
+          { id: '7', nom: 'Automobile', description: 'Pièces automobiles' },
+          { id: '8', nom: 'Livres & Médias', description: 'Livres et médias' },
+          { id: '9', nom: 'Pharmacie', description: 'Produits pharmaceutiques' },
+          { id: '10', nom: 'Autre', description: 'Autres catégories' }
         ];
       }
       
+      console.log('Catégories chargées:', categories.length);
       setProductCategories(categories);
     } catch (error) {
       console.error('Erreur lors du chargement des catégories:', error);
       // En cas d'erreur, utiliser des catégories par défaut
-      setProductCategories([
-        { id: '1', nom: 'Produits Généraux', description: 'Catégorie par défaut' }
-      ]);
+      const defaultCategories = [
+        { id: '1', nom: 'Électronique', description: 'Produits électroniques' },
+        { id: '2', nom: 'Vêtements & Mode', description: 'Vêtements et accessoires' },
+        { id: '3', nom: 'Maison & Jardin', description: 'Articles pour la maison' },
+        { id: '4', nom: 'Sport & Loisirs', description: 'Équipements sportifs' },
+        { id: '5', nom: 'Beauté & Santé', description: 'Produits de beauté et santé' },
+        { id: '6', nom: 'Alimentation', description: 'Produits alimentaires' },
+        { id: '7', nom: 'Automobile', description: 'Pièces automobiles' },
+        { id: '8', nom: 'Livres & Médias', description: 'Livres et médias' },
+        { id: '9', nom: 'Pharmacie', description: 'Produits pharmaceutiques' },
+        { id: '10', nom: 'Autre', description: 'Autres catégories' }
+      ];
+      setProductCategories(defaultCategories);
     }
   };
 
@@ -497,6 +669,12 @@ const StockPage: React.FC = () => {
       icon: <Package className="w-4 h-4" />,
     },
     {
+      name: 'marque',
+      label: 'Marque',
+      type: 'text' as const,
+      placeholder: 'Ex: Samsung',
+    },
+    {
       name: 'description_courte',
       label: 'Description Courte',
       type: 'textarea' as const,
@@ -571,11 +749,11 @@ const StockPage: React.FC = () => {
       step: '0.01',
     },
     {
-      name: 'image',
-      label: 'Image du Produit',
+      name: 'images',
+      label: 'Images du Produit',
       type: 'file' as const,
-      placeholder: 'Sélectionnez une image',
-      description: 'Formats acceptés: JPG, PNG, WebP (max 5MB)',
+      placeholder: 'Sélectionnez une ou plusieurs images',
+      description: 'Formats acceptés: JPG, PNG, WebP (max 5MB par image, max 5 images)',
     },
     {
       name: 'date_peremption',
@@ -682,60 +860,200 @@ const StockPage: React.FC = () => {
       const randomStr = Math.random().toString(36).substr(2, 6);
       const slug = `${data.nom.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-')}-${timestamp}-${randomStr}`;
       
-      // Préparer les données pour l'API
-      const productData = {
-        nom: data.nom.trim(),
-        description_courte: data.description_courte?.trim() || 'Description courte',
-        description_longue: data.description_longue?.trim() || data.description_courte?.trim() || 'Description longue',
-        prix_achat: parseFloat(data.prix_achat),
-        prix_vente: parseFloat(data.prix_vente),
-        stock: parseInt(data.stock_initial) || 0, // Utiliser le champ stock au lieu de stock_initial
-        sku: data.sku?.trim() || `SKU-${timestamp}-${Math.random().toString(36).substr(2, 9)}`,
-        code_barre: data.code_barre?.trim() || null,
-        slug: slug,
-        // Utiliser les IDs des catégories et marques créées
-        categorie: data.categorie || (productCategories.length > 0 ? productCategories[0].id : '7e825032-588c-49c5-84db-5677b4721800'), // Alimentation par défaut
-        marque: 'c2cab192-96d3-4279-afef-d1b80e86144e', // Marque par défaut
-        unite_mesure: 'piece', // Valeur par défaut
-        tva_taux: parseFloat(data.tva_taux) || 18.0,
-        // Champs obligatoires manquants
-        statut: 'actif',
-        vendable: true,
-        achetable: true,
-        visible_catalogue: true,
-        // Champs avec valeurs par défaut
-        dimensions: {},
-        couleurs_disponibles: [],
-        tailles_disponibles: [],
-        // Champs supplémentaires pour éviter les erreurs
-        date_peremption: data.date_peremption || null,
-        duree_conservation: data.duree_conservation || null,
-        images: []
-      };
+      // Préparer les données pour l'API avec FormData pour supporter les images
+      const formData = new FormData();
+      
+      // Ajouter les champs texte
+      formData.append('nom', data.nom.trim());
+      formData.append('description_courte', data.description_courte?.trim() || 'Description courte');
+      formData.append('description_longue', data.description_longue?.trim() || data.description_courte?.trim() || 'Description longue');
+      formData.append('prix_achat', parseFloat(data.prix_achat).toString());
+      formData.append('prix_vente', parseFloat(data.prix_vente).toString());
+      formData.append('stock', (parseInt(data.stock_initial) || 0).toString());
+      formData.append('sku', data.sku?.trim() || `SKU-${timestamp}-${Math.random().toString(36).substr(2, 9)}`);
+      if (data.code_barre) {
+        formData.append('code_barre', data.code_barre.trim());
+      }
+      formData.append('slug', slug);
+      
+      // Gérer la catégorie : vérifier que c'est un UUID valide
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      let categoryId = data.categorie;
+      
+      console.log('🔍 Catégorie sélectionnée:', categoryId);
+      console.log('🔍 Est un UUID valide ?', categoryId && uuidRegex.test(categoryId));
+      
+      if (!categoryId || !uuidRegex.test(categoryId)) {
+        // Si ce n'est pas un UUID valide, essayer de trouver la catégorie
+        console.warn('⚠️ Catégorie n\'est pas un UUID valide:', categoryId);
+        console.warn('🔍 Tentative de récupération des catégories depuis l\'API...');
+        
+        try {
+          const categoriesResponse = await apiService.getCategories();
+          console.log('📋 Réponse catégories:', categoriesResponse);
+          
+          const categories = Array.isArray(categoriesResponse) ? categoriesResponse : 
+                           (categoriesResponse.results || categoriesResponse.data || []);
+          
+          console.log(`📦 Nombre de catégories trouvées: ${categories.length}`);
+          
+          if (categories.length === 0) {
+            throw new Error('Aucune catégorie disponible dans la base de données. Veuillez d\'abord créer des catégories.');
+          }
+          
+          let categoryFound = null;
+          if (!isNaN(Number(categoryId))) {
+            // Si c'est un nombre, chercher par index
+            const categoryIndex = parseInt(categoryId) - 1;
+            console.log(`🔍 Recherche par index: ${categoryIndex}`);
+            categoryFound = categories[categoryIndex];
+          } else if (categoryId) {
+            // Chercher par nom
+            console.log(`🔍 Recherche par nom/id: ${categoryId}`);
+            categoryFound = categories.find((c: any) => 
+              c.nom?.toLowerCase() === categoryId.toLowerCase() ||
+              c.id === categoryId ||
+              c.id?.toString() === categoryId.toString()
+            );
+          }
+          
+          if (categoryFound && categoryFound.id && uuidRegex.test(categoryFound.id)) {
+            categoryId = categoryFound.id;
+            console.log('✅ Catégorie trouvée par nom/index:', categoryId);
+          } else if (categories.length > 0) {
+            // Utiliser la première catégorie valide disponible
+            const firstValidCategory = categories.find((c: any) => 
+              c.id && uuidRegex.test(c.id)
+            );
+            
+            if (firstValidCategory) {
+              categoryId = firstValidCategory.id;
+              console.warn('⚠️ Catégorie sélectionnée invalide, utilisation de la première catégorie disponible:', firstValidCategory.nom, '(', categoryId, ')');
+            } else {
+              throw new Error('Aucune catégorie avec UUID valide trouvée dans la base de données');
+            }
+          } else {
+            throw new Error('Aucune catégorie disponible');
+          }
+        } catch (error: any) {
+          console.error('❌ Erreur lors de la recherche de catégorie:', error);
+          const errorMessage = error.message || 'Erreur lors de la récupération des catégories';
+          alert(`Erreur : ${errorMessage}\n\nVeuillez vérifier que des catégories existent dans la base de données.`);
+          setIsSubmitting(false);
+          return;
+        }
+      }
+      
+      console.log('✅ Catégorie finale sélectionnée:', categoryId);
+      formData.append('categorie', categoryId);
+      
+      // Gérer la marque : créer ou récupérer la marque
+      let marqueId = null;
+      if (data.marque && data.marque.trim()) {
+        try {
+          // Essayer d'abord de récupérer la marque par son nom
+          const marquesResponse = await apiService.request('/products/marques/');
+          const marques = Array.isArray(marquesResponse) ? marquesResponse : 
+                         (marquesResponse.results || marquesResponse.data || []);
+          
+          const marqueExistant = marques.find((m: any) => 
+            m.nom?.toLowerCase() === data.marque.trim().toLowerCase()
+          );
+          
+          if (marqueExistant) {
+            marqueId = marqueExistant.id;
+            console.log('✅ Marque existante trouvée:', marqueId);
+          } else {
+            // Créer une nouvelle marque
+            try {
+              const nouvelleMarque = await apiService.request('/products/marques/', {
+                method: 'POST',
+                body: JSON.stringify({ nom: data.marque.trim() }),
+              });
+              marqueId = nouvelleMarque.id;
+              console.log('✅ Nouvelle marque créée:', marqueId);
+            } catch (createError: any) {
+              console.error('Erreur lors de la création de la marque:', createError);
+              // Si la création échoue, ne pas bloquer la création du produit
+              console.warn('⚠️ Marque non créée, produit créé sans marque');
+            }
+          }
+        } catch (error: any) {
+          console.error('Erreur lors de la gestion de la marque:', error);
+          // Ne pas bloquer la création du produit si la marque échoue
+        }
+      }
+      
+      if (marqueId) {
+        formData.append('marque', marqueId);
+      }
+      
+      formData.append('unite_mesure', 'piece');
+      formData.append('tva_taux', (parseFloat(data.tva_taux) || 18.0).toString());
+      formData.append('statut', 'actif');
+      formData.append('vendable', 'true');
+      formData.append('achetable', 'true');
+      formData.append('visible_catalogue', 'true');
+      
+      // Gérer les images : convertir en tableau si nécessaire
+      let imagesArray: File[] = [];
+      if (data.images) {
+        if (data.images instanceof FileList) {
+          imagesArray = Array.from(data.images);
+        } else if (Array.isArray(data.images)) {
+          imagesArray = data.images.filter((img: any) => img instanceof File);
+        } else if (data.images instanceof File) {
+          imagesArray = [data.images];
+        }
+      }
+      
+      // Ajouter les images au FormData
+      imagesArray.forEach((image: File) => {
+        formData.append('images', image);
+      });
 
-      console.log('Données du produit à envoyer:', productData);
+      // Logger tous les champs du FormData pour le débogage
+      console.log('📦 FormData préparé pour création produit:');
+      console.log('  - nom:', data.nom);
+      console.log('  - categorie:', categoryId);
+      console.log('  - marque:', marqueId || 'aucune');
+      console.log('  - prix_achat:', parseFloat(data.prix_achat));
+      console.log('  - prix_vente:', parseFloat(data.prix_vente));
+      console.log('  - stock:', parseInt(data.stock_initial) || 0);
+      console.log('  - sku:', data.sku?.trim() || `SKU-${timestamp}-${Math.random().toString(36).substr(2, 9)}`);
+      console.log('  - images:', imagesArray.length);
+      
+      // Lister tous les champs du FormData
+      console.log('📋 Tous les champs du FormData:');
+      for (const pair of formData.entries()) {
+        if (pair[1] instanceof File) {
+          console.log(`  - ${pair[0]}: [File] ${pair[1].name} (${pair[1].size} bytes)`);
+        } else {
+          console.log(`  - ${pair[0]}: ${pair[1]}`);
+        }
+      }
 
-      // Appel API réel
-      const response = await apiService.createProduct(productData);
+      // Appel API réel avec FormData
+      const response = await apiService.createProduct(formData);
       console.log('Produit créé avec succès:', response);
       
-      // Upload des images si fournies
-      if (data.images && data.images.length > 0) {
-        try {
-          for (let i = 0; i < data.images.length; i++) {
-            await apiService.uploadProductImage(response.id, data.images[i]);
-            console.log(`Image ${i + 1} uploadée avec succès`);
+      // Uploader les images supplémentaires après création si nécessaire
+      const productId = response.id;
+      if (productId && imagesArray.length > 0) {
+        console.log('Upload des images supplémentaires après création...');
+        for (const imageFile of imagesArray) {
+          try {
+            await apiService.uploadProductImage(productId, imageFile);
+          } catch (imgError) {
+            console.warn('Erreur lors de l\'upload d\'une image:', imgError);
           }
-        } catch (imageError) {
-          console.error('Erreur lors de l\'upload des images:', imageError);
-          // Ne pas faire échouer la création du produit si l'image échoue
         }
       }
       
       // Fermer le formulaire
       setShowProductForm(false);
       
-      // Recharger la liste des produits
+      // Recharger la liste des produits pour afficher les images
       await loadProducts();
       
       alert('Produit créé avec succès !');
@@ -745,20 +1063,21 @@ const StockPage: React.FC = () => {
       
       // Gestion des erreurs détaillées
       let errorMessage = 'Erreur lors de la création du produit.';
+      let errorDetails: any = null;
       
       if (error.response?.data) {
-        const errorData = error.response.data;
-        console.log('Données d\'erreur:', errorData);
+        errorDetails = error.response.data;
+        console.log('📋 Données d\'erreur complètes:', errorDetails);
         
-        if (typeof errorData === 'string') {
-          errorMessage = errorData;
-        } else if (errorData.detail) {
-          errorMessage = errorData.detail;
-        } else if (errorData.non_field_errors) {
-          errorMessage = errorData.non_field_errors.join(', ');
+        if (typeof errorDetails === 'string') {
+          errorMessage = errorDetails;
+        } else if (errorDetails.detail) {
+          errorMessage = errorDetails.detail;
+        } else if (errorDetails.non_field_errors) {
+          errorMessage = errorDetails.non_field_errors.join(', ');
         } else {
           // Afficher les erreurs de validation par champ
-          const fieldErrors = Object.entries(errorData)
+          const fieldErrors = Object.entries(errorDetails)
             .map(([field, messages]: [string, any]) => {
               const fieldName = field === 'categorie' ? 'catégorie' : 
                                field === 'prix_achat' ? 'prix d\'achat' :
@@ -766,6 +1085,7 @@ const StockPage: React.FC = () => {
                                field === 'stock_minimum' ? 'stock minimum' :
                                field === 'stock_maximum' ? 'stock maximum' :
                                field === 'tva_taux' ? 'taux TVA' :
+                               field === 'marque' ? 'marque' :
                                field;
               
               if (Array.isArray(messages)) {
@@ -881,30 +1201,148 @@ const StockPage: React.FC = () => {
         }
       }
       
-      // Préparer les données pour l'API
-      const updateData = {
-        nom: data.nom,
-        description_courte: data.description_courte || 'Description courte',
-        description_longue: data.description_longue || data.description_courte || 'Description longue',
-        prix_achat: parseFloat(data.prix_achat) || 0,
-        prix_vente: parseFloat(data.prix_vente) || 0,
+      // Gérer la catégorie : vérifier que c'est un UUID valide
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      let categoryId = data.categorie || currentProduct.categorie?.id || currentProduct.categorie_id || currentProduct.categorie;
+      
+      if (categoryId && !uuidRegex.test(categoryId)) {
+        // Si ce n'est pas un UUID valide, essayer de trouver la catégorie
+        try {
+          const categoriesResponse = await apiService.getCategories();
+          const categories = Array.isArray(categoriesResponse) ? categoriesResponse : 
+                           (categoriesResponse.results || categoriesResponse.data || []);
+          
+          const categoryFound = categories.find((c: any) => 
+            c.nom?.toLowerCase() === categoryId.toLowerCase() ||
+            c.id === categoryId ||
+            c.id?.toString() === categoryId.toString()
+          );
+          
+          if (categoryFound && categoryFound.id && uuidRegex.test(categoryFound.id)) {
+            categoryId = categoryFound.id;
+          } else if (categories.length > 0) {
+            const firstValidCategory = categories.find((c: any) => c.id && uuidRegex.test(c.id));
+            if (firstValidCategory) {
+              categoryId = firstValidCategory.id;
+            }
+          }
+        } catch (error) {
+          console.error('Erreur lors de la recherche de catégorie:', error);
+        }
+      }
+      
+      // Gérer la marque : créer ou récupérer la marque
+      let marqueId = null;
+      if (data.marque && data.marque.trim()) {
+        try {
+          const marquesResponse = await apiService.request('/products/marques/');
+          const marques = Array.isArray(marquesResponse) ? marquesResponse : 
+                         (marquesResponse.results || marquesResponse.data || []);
+          
+          const marqueExistant = marques.find((m: any) => 
+            m.nom?.toLowerCase() === data.marque.trim().toLowerCase()
+          );
+          
+          if (marqueExistant) {
+            marqueId = marqueExistant.id;
+          } else {
+            // Créer une nouvelle marque
+            try {
+              const nouvelleMarque = await apiService.request('/products/marques/', {
+                method: 'POST',
+                body: JSON.stringify({ nom: data.marque.trim() }),
+              });
+              marqueId = nouvelleMarque.id;
+            } catch (createError) {
+              console.error('Erreur lors de la création de la marque:', createError);
+            }
+          }
+        } catch (error) {
+          console.error('Erreur lors de la gestion de la marque:', error);
+        }
+      }
+      
+      // Si pas de nouvelle marque, utiliser l'existante
+      if (!marqueId) {
+        marqueId = currentProduct.marque?.id || currentProduct.marque_id || currentProduct.marque;
+      }
+      
+      // Préparer les données de mise à jour avec FormData pour supporter les images
+      const formData = new FormData();
+      
+      formData.append('nom', data.nom.trim());
+      formData.append('description_courte', data.description_courte?.trim() || 'Description courte');
+      formData.append('description_longue', data.description_longue?.trim() || data.description_courte?.trim() || 'Description longue');
+      formData.append('prix_achat', parseFloat(data.prix_achat || currentProduct.prix_achat).toString());
+      formData.append('prix_vente', parseFloat(data.prix_vente || currentProduct.prix_vente).toString());
+      formData.append('stock', (parseInt(data.stock_initial || data.stock || currentProduct.stock) || 0).toString());
+      formData.append('stock_minimum', (parseInt(data.stock_minimum) || 5).toString());
+      formData.append('stock_maximum', (parseInt(data.stock_maximum) || 100).toString());
+      formData.append('sku', data.sku || currentProduct.sku);
+      if (data.code_barre) {
+        formData.append('code_barre', data.code_barre.trim());
+      }
+      formData.append('categorie', categoryId);
+      if (marqueId) {
+        formData.append('marque', marqueId);
+      }
+      formData.append('unite_mesure', 'piece');
+      formData.append('tva_taux', (parseFloat(data.tva_taux) || 18.0).toString());
+      formData.append('statut', currentProduct.statut || 'actif');
+      formData.append('vendable', (currentProduct.vendable !== false).toString());
+      formData.append('achetable', (currentProduct.achetable !== false).toString());
+      formData.append('visible_catalogue', (currentProduct.visible_catalogue !== false).toString());
+      
+      // Gérer les images si présentes
+      let imagesArray: File[] = [];
+      if (data.images) {
+        if (data.images instanceof FileList) {
+          imagesArray = Array.from(data.images);
+        } else if (Array.isArray(data.images)) {
+          imagesArray = data.images.filter((img: any) => img instanceof File);
+        } else if (data.images instanceof File) {
+          imagesArray = [data.images];
+        }
+      }
+      
+      // Ajouter les images au FormData
+      imagesArray.forEach((image: File) => {
+        formData.append('images', image);
+      });
+
+      // Appel API réel avec FormData ou updateData selon ce que l'API accepte
+      const updateData: any = {
+        nom: data.nom.trim(),
+        description_courte: data.description_courte?.trim() || 'Description courte',
+        description_longue: data.description_longue?.trim() || data.description_courte?.trim() || 'Description longue',
+        prix_achat: parseFloat(data.prix_achat || currentProduct.prix_achat),
+        prix_vente: parseFloat(data.prix_vente || currentProduct.prix_vente),
         stock_minimum: parseInt(data.stock_minimum) || 5,
         stock_maximum: parseInt(data.stock_maximum) || 100,
-        stock_initial: parseInt(data.stock_initial) || 0,
-        sku: data.sku,
-        code_barre: data.code_barre,
-        unite_mesure: 'piece', // Valeur par défaut
+        stock: parseInt(data.stock_initial || data.stock || currentProduct.stock) || 0,
+        sku: data.sku || currentProduct.sku,
+        code_barre: data.code_barre || currentProduct.code_barre || '',
+        unite_mesure: 'piece',
         tva_taux: parseFloat(data.tva_taux) || 18.0,
         date_peremption: data.date_peremption || null,
         duree_conservation: data.duree_conservation || null,
-        // Inclure les champs requis
-        categorie: data.categorie || currentProduct.categorie,
-        marque: currentProduct.marque, // Garder la marque existante
+        categorie: categoryId,
+        marque: marqueId,
         slug: currentProduct.slug
       };
-
-      // Appel API réel
-      const response = await apiService.updateProduct(id, updateData);
+      
+      // Essayer d'abord avec FormData si des images sont présentes
+      let response;
+      if (imagesArray.length > 0) {
+        try {
+          response = await apiService.updateProduct(id, formData);
+        } catch (formDataError) {
+          console.warn('Erreur avec FormData, essai avec updateData:', formDataError);
+          response = await apiService.updateProduct(id, updateData);
+        }
+      } else {
+        response = await apiService.updateProduct(id, updateData);
+      }
       console.log('Produit modifié avec succès:', response);
       
       // Fermer le formulaire
@@ -992,6 +1430,118 @@ const StockPage: React.FC = () => {
     }
   };
 
+  // Fonction pour ouvrir la modal de gestion des images
+  const handleManageImages = (product: any) => {
+    setProductForImages(product);
+    setSelectedImages([]);
+    setShowImageModal(true);
+  };
+
+  // Fonction pour gérer l'upload d'images
+  const handleImageSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+    
+    // Validation des fichiers
+    const validFiles = files.filter(file => {
+      if (!file.type.startsWith('image/')) {
+        alert(`Le fichier ${file.name} n'est pas une image valide.`);
+        return false;
+      }
+      if (file.size > 5 * 1024 * 1024) { // 5MB max
+        alert(`L'image ${file.name} est trop volumineuse (max 5MB).`);
+        return false;
+      }
+      return true;
+    });
+    
+    // Limiter à 5 images maximum
+    const newImages = [...selectedImages, ...validFiles].slice(0, 5);
+    setSelectedImages(newImages);
+  };
+
+  // Fonction pour supprimer une image sélectionnée
+  const removeSelectedImage = (index: number) => {
+    setSelectedImages(prev => prev.filter((_, i) => i !== index));
+  };
+
+  // Fonction pour uploader les images
+  const handleUploadImages = async () => {
+    if (!productForImages || selectedImages.length === 0) return;
+    
+    try {
+      setUploadingImages(true);
+      
+      // Uploader chaque image
+      for (const imageFile of selectedImages) {
+        await apiService.uploadProductImage(productForImages.id, imageFile);
+      }
+      
+      // Recharger le produit spécifique pour avoir les nouvelles images avec les URLs complètes
+      try {
+        const updatedProductResponse = await apiService.getProduct(productForImages.id);
+        
+        // Transformer le produit de la même manière que dans loadProducts
+        const updatedProduct = {
+          ...updatedProductResponse,
+          image: updatedProductResponse.images && updatedProductResponse.images.length > 0 ? 
+            (updatedProductResponse.images[0].image_url || (updatedProductResponse.images[0].image?.startsWith('http') ? updatedProductResponse.images[0].image : `http://localhost:8000${updatedProductResponse.images[0].image || ''}`)) :
+            updatedProductResponse.image_url || 'https://images.pexels.com/photos/33239/wheat-field-wheat-yellow-grain.jpg?auto=compress&cs=tinysrgb&w=400&h=400&dpr=2',
+          en_rupture: updatedProductResponse.en_rupture || updatedProductResponse.stock_actuel === 0,
+          stock_bas: updatedProductResponse.stock_actuel <= 5,
+          stock_actuel: updatedProductResponse.stock_actuel || updatedProductResponse.stock || 0,
+          prix_achat: parseFloat(updatedProductResponse.prix_achat) || 0,
+          prix_vente: parseFloat(updatedProductResponse.prix_vente) || 0,
+          marge_beneficiaire: updatedProductResponse.prix_achat > 0 ? 
+            Math.round(((updatedProductResponse.prix_vente - updatedProductResponse.prix_achat) / updatedProductResponse.prix_achat) * 100) : 0,
+          categorie: updatedProductResponse.categorie_nom || 'Non classé'
+        };
+        
+        setProductForImages(updatedProduct);
+        
+        // Mettre à jour aussi dans la liste des produits
+        setProducts(prevProducts => 
+          prevProducts.map(p => 
+            p.id === productForImages.id ? updatedProduct : p
+          )
+        );
+      } catch (error) {
+        console.warn('Erreur lors du rechargement du produit, rechargement de toute la liste...');
+        await loadProducts();
+        // Recharger aussi le produit pour la modal
+        const refreshedProduct = products.find(p => p.id === productForImages.id);
+        if (refreshedProduct) {
+          setProductForImages(refreshedProduct);
+        }
+      }
+      
+      alert(`${selectedImages.length} image(s) ajoutée(s) avec succès !`);
+      setSelectedImages([]);
+      
+      // Ne pas fermer la modal pour voir les nouvelles images
+      
+    } catch (error: any) {
+      console.error('Erreur lors de l\'upload des images:', error);
+      alert('Erreur lors de l\'upload des images');
+    } finally {
+      setUploadingImages(false);
+    }
+  };
+
+  // Fonction pour supprimer une image existante
+  const handleDeleteImage = async (imageId: string) => {
+    if (!confirm('Êtes-vous sûr de vouloir supprimer cette image ?')) return;
+    
+    try {
+      // Note: Vous devrez peut-être créer cette méthode dans apiService
+      // await apiService.deleteProductImage(imageId);
+      await loadProducts();
+      alert('Image supprimée avec succès !');
+    } catch (error: any) {
+      console.error('Erreur lors de la suppression de l\'image:', error);
+      alert('Erreur lors de la suppression de l\'image');
+    }
+  };
+
   // Fonction pour vendre un produit
   const handleSellProduct = async (product: any, quantity: number) => {
     try {
@@ -1073,6 +1623,16 @@ const StockPage: React.FC = () => {
               title="Scanner QR Code"
             >
               <QrCode className="w-4 h-4" />
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleManageImages(product);
+              }}
+              className="p-2 bg-white/80 backdrop-blur-sm text-blue-600 rounded-lg hover:bg-white transition-colors"
+              title="Gérer les images"
+            >
+              <Camera className="w-4 h-4" />
             </button>
             <button
               onClick={(e) => {
@@ -1331,25 +1891,96 @@ const StockPage: React.FC = () => {
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
                 <span className="ml-2 text-gray-600">Chargement des produits...</span>
               </div>
+            ) : products.length === 0 ? (
+              <div className="col-span-full flex flex-col items-center justify-center py-12">
+                <Package className="w-16 h-16 text-gray-400 mb-4" />
+                <p className="text-gray-600 dark:text-gray-400 text-lg font-medium mb-2">
+                  Aucun produit trouvé
+                </p>
+                <p className="text-gray-500 dark:text-gray-500 text-sm mb-4 text-center max-w-md">
+                  {user?.company 
+                    ? 'Commencez par ajouter votre premier produit à votre inventaire'
+                    : 'Aucune entreprise associée. Une entreprise sera créée automatiquement lors de votre première création de produit.'}
+                </p>
+                {!user?.company && (
+                  <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-4 max-w-md">
+                    <p className="text-blue-800 dark:text-blue-200 text-sm">
+                      💡 <strong>Note :</strong> Si vous créez un produit maintenant, une entreprise sera automatiquement créée pour vous.
+                    </p>
+                  </div>
+                )}
+                <Button
+                  variant="primary"
+                  icon={<Plus className="w-4 h-4" />}
+                  onClick={() => setShowProductForm(true)}
+                >
+                  Ajouter un produit
+                </Button>
+              </div>
+            ) : (() => {
+              const filteredProducts = products.filter(product => {
+                const matchesSearch = !searchTerm || product.nom?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                                     product.sku?.toLowerCase().includes(searchTerm.toLowerCase());
+                const matchesCategory = selectedCategory === 'all' || 
+                                       product.categorie === selectedCategory ||
+                                       product.categorieId === selectedCategory ||
+                                       product.categorieId?.toString() === selectedCategory?.toString();
+                return matchesSearch && matchesCategory;
+              });
+              return filteredProducts.length === 0 ? (
+              <div className="col-span-full flex flex-col items-center justify-center py-12">
+                <Package className="w-16 h-16 text-gray-400 mb-4" />
+                <p className="text-gray-600 dark:text-gray-400 text-lg font-medium mb-2">
+                  {products.length === 0 
+                    ? 'Aucun produit trouvé'
+                    : 'Aucun produit ne correspond à vos critères'}
+                </p>
+                <p className="text-gray-500 dark:text-gray-500 text-sm mb-4">
+                  {products.length === 0 
+                    ? 'Commencez par ajouter votre premier produit'
+                    : `${products.length} produit(s) disponible(s) mais aucun ne correspond à vos filtres`}
+                </p>
+                {products.length === 0 && (
+                  <Button
+                    variant="primary"
+                    icon={<Plus className="w-4 h-4" />}
+                    onClick={() => navigate('/entrepreneur/add-product')}
+                  >
+                    Ajouter un produit
+                  </Button>
+                )}
+                {products.length > 0 && (
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      setSearchTerm('');
+                      setSelectedCategory('all');
+                    }}
+                  >
+                    Réinitialiser les filtres
+                  </Button>
+                )}
+              </div>
             ) : (
-              products
-                .filter(product => 
-                  product.nom.toLowerCase().includes(searchTerm.toLowerCase()) &&
-                  (selectedCategory === 'all' || product.categorie === selectedCategory)
-                )
-                .map((product) => (
-                  <ProductCard key={product.id} product={product} />
-                ))
-            )}
+              filteredProducts.map((product) => (
+                <ProductCard key={product.id} product={product} />
+              ))
+            );
+            })()}
           </AnimatePresence>
         </motion.div>
       ) : (
         <div className="card-premium">
           <DataTable
-            data={products.filter(product => 
-              product.nom.toLowerCase().includes(searchTerm.toLowerCase()) &&
-              (selectedCategory === 'all' || product.categorie === selectedCategory)
-            )}
+            data={products.filter(product => {
+              const matchesSearch = !searchTerm || product.nom?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                                   product.sku?.toLowerCase().includes(searchTerm.toLowerCase());
+              const matchesCategory = selectedCategory === 'all' || 
+                                     product.categorie === selectedCategory ||
+                                     product.categorieId === selectedCategory ||
+                                     product.categorieId?.toString() === selectedCategory?.toString();
+              return matchesSearch && matchesCategory;
+            })}
             columns={[
               {
                 accessorKey: 'nom',
@@ -1495,18 +2126,21 @@ const StockPage: React.FC = () => {
                 loading={isSubmitting}
                 validationErrors={validationErrors}
                 defaultValues={selectedProduct ? {
-                  nom: selectedProduct.nom,
-                  description_courte: selectedProduct.description_courte,
-                  description_longue: selectedProduct.description_longue,
-                  prix_achat: selectedProduct.prix_achat,
-                  prix_vente: selectedProduct.prix_vente,
-                  stock_minimum: selectedProduct.stock_minimum,
-                  stock_maximum: selectedProduct.stock_maximum,
-                  stock_initial: selectedProduct.stock_initial || 0,
-                  sku: selectedProduct.sku,
-                  code_barre: selectedProduct.code_barre,
+                  nom: selectedProduct.nom || '',
+                  marque: selectedProduct.marque_nom || selectedProduct.marque?.nom || selectedProduct.marque || '',
+                  description_courte: selectedProduct.description_courte || '',
+                  description_longue: selectedProduct.description_longue || '',
+                  prix_achat: selectedProduct.prix_achat || 0,
+                  prix_vente: selectedProduct.prix_vente || 0,
+                  stock_minimum: selectedProduct.stock_minimum || 5,
+                  stock_maximum: selectedProduct.stock_maximum || 100,
+                  stock_initial: selectedProduct.stock_initial || selectedProduct.stock || 0,
+                  sku: selectedProduct.sku || '',
+                  code_barre: selectedProduct.code_barre || '',
                   tva_taux: selectedProduct.tva_taux || 18.0,
-                  categorie: selectedProduct.categorie
+                  categorie: selectedProduct.categorie?.id || selectedProduct.categorie_id || selectedProduct.categorie || '',
+                  date_peremption: selectedProduct.date_peremption || '',
+                  duree_conservation: selectedProduct.duree_conservation || 0
                 } : undefined}
               />
             </motion.div>
@@ -1685,6 +2319,13 @@ const StockPage: React.FC = () => {
                         }}
                       >
                         Modifier
+                      </Button>
+                      <Button 
+                        variant="secondary" 
+                        icon={<Camera className="w-4 h-4" />}
+                        onClick={() => handleManageImages(selectedProduct)}
+                      >
+                        Gérer Images
                       </Button>
                       <Button 
                         variant="secondary" 
@@ -1925,6 +2566,173 @@ const StockPage: React.FC = () => {
                     onClick={() => handleDeleteProduct(productToDelete)}
                   >
                     Supprimer
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Image Management Modal */}
+      <AnimatePresence>
+        {showImageModal && productForImages && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50"
+            onClick={() => {
+              setShowImageModal(false);
+              setSelectedImages([]);
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white dark:bg-dark-800 rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+                    Gérer les Images
+                  </h2>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                    {productForImages.nom}
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowImageModal(false);
+                    setSelectedImages([]);
+                  }}
+                  className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-6">
+                {/* Images existantes */}
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                    Images existantes
+                  </h3>
+                  {productForImages.images && productForImages.images.length > 0 ? (
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                      {productForImages.images.map((image: any, index: number) => (
+                        <div key={index} className="relative group">
+                          <img
+                            src={image.image_url || (image.image?.startsWith('http') ? image.image : `http://localhost:8000${image.image || ''}`)}
+                            alt={image.alt_text || `Image ${index + 1}`}
+                            className="w-full aspect-square object-cover rounded-xl"
+                            onError={(e) => {
+                              e.currentTarget.src = 'https://images.pexels.com/photos/33239/wheat-field-wheat-yellow-grain.jpg?auto=compress&cs=tinysrgb&w=400&h=400&dpr=2';
+                            }}
+                          />
+                          {image.principale && (
+                            <span className="absolute top-2 left-2 bg-blue-500 text-white text-xs px-2 py-1 rounded">
+                              Principale
+                            </span>
+                          )}
+                          <button
+                            onClick={() => handleDeleteImage(image.id)}
+                            className="absolute top-2 right-2 bg-red-500 text-white p-2 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 bg-gray-50 dark:bg-gray-700 rounded-xl">
+                      <Camera className="w-12 h-12 text-gray-400 mx-auto mb-2" />
+                      <p className="text-gray-600 dark:text-gray-400">Aucune image existante</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Ajouter de nouvelles images */}
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                    Ajouter de nouvelles images
+                  </h3>
+                  
+                  {/* Zone de sélection */}
+                  <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-8 text-center hover:border-primary-500 transition-colors">
+                    <input
+                      type="file"
+                      id="image-upload"
+                      multiple
+                      accept="image/*"
+                      onChange={handleImageSelect}
+                      className="hidden"
+                    />
+                    <label
+                      htmlFor="image-upload"
+                      className="cursor-pointer flex flex-col items-center"
+                    >
+                      <Upload className="w-12 h-12 text-gray-400 mb-4" />
+                      <p className="text-gray-600 dark:text-gray-400 mb-2">
+                        Cliquez pour sélectionner des images
+                      </p>
+                      <p className="text-sm text-gray-500">
+                        Formats acceptés: JPG, PNG, WebP (max 5MB par image, max 5 images)
+                      </p>
+                    </label>
+                  </div>
+
+                  {/* Aperçu des images sélectionnées */}
+                  {selectedImages.length > 0 && (
+                    <div className="mt-4">
+                      <h4 className="font-medium text-gray-900 dark:text-white mb-3">
+                        Images sélectionnées ({selectedImages.length}/5)
+                      </h4>
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                        {selectedImages.map((image, index) => (
+                          <div key={index} className="relative group">
+                            <img
+                              src={URL.createObjectURL(image)}
+                              alt={`Preview ${index + 1}`}
+                              className="w-full aspect-square object-cover rounded-xl"
+                            />
+                            <button
+                              onClick={() => removeSelectedImage(index)}
+                              className="absolute top-2 right-2 bg-red-500 text-white p-2 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                            <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 truncate">
+                              {image.name}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Actions */}
+                <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      setShowImageModal(false);
+                      setSelectedImages([]);
+                    }}
+                  >
+                    Annuler
+                  </Button>
+                  <Button
+                    variant="primary"
+                    icon={<Upload className="w-4 h-4" />}
+                    onClick={handleUploadImages}
+                    disabled={selectedImages.length === 0 || uploadingImages}
+                  >
+                    {uploadingImages ? 'Upload en cours...' : `Uploader ${selectedImages.length} image(s)`}
                   </Button>
                 </div>
               </div>

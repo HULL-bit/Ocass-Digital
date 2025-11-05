@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Package, Upload, X, Plus, Minus } from 'lucide-react';
 import Button from '../ui/Button';
 import * as yup from 'yup';
+import apiService from '../../services/api/realApi';
 
 interface ProductFormData {
   nom: string;
@@ -14,6 +15,7 @@ interface ProductFormData {
   stock_maximum: number;
   stock_initial: number;
   categorie: string;
+  marque: string;
   code_barre: string;
   sku: string;
   tva_taux: number;
@@ -22,6 +24,7 @@ interface ProductFormData {
   couleur: string;
   materiau: string;
   images: File[];
+  localImages: string[]; // Images locales depuis /Res
   tags: string[];
 }
 
@@ -45,9 +48,10 @@ const ProductForm: React.FC<ProductFormProps> = ({
     prix_achat: 0,
     prix_vente: 0,
     stock_minimum: 0,
-    stock_maximum: 0,
+    stock_maximum: 1000,
     stock_initial: 0,
     categorie: '',
+    marque: '',
     code_barre: '',
     sku: '',
     tva_taux: 18.0,
@@ -56,12 +60,114 @@ const ProductForm: React.FC<ProductFormProps> = ({
     couleur: '',
     materiau: '',
     images: [],
+    localImages: [],
     tags: [],
     ...initialData
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [newTag, setNewTag] = useState('');
+  const [categories, setCategories] = useState<Array<{ id: string; nom: string }>>([]);
+  const [loadingCategories, setLoadingCategories] = useState(true);
+
+  // Charger les catégories depuis l'API
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        setLoadingCategories(true);
+        const response = await apiService.getCategories();
+        console.log('Catégories chargées:', response);
+        
+        // Gérer différents formats de réponse
+        let categoriesData = [];
+        if (response && Array.isArray(response)) {
+          categoriesData = response;
+        } else if (response && response.results && Array.isArray(response.results)) {
+          categoriesData = response.results;
+        } else if (response && response.data && Array.isArray(response.data)) {
+          categoriesData = response.data;
+        } else {
+          console.warn('Format de réponse des catégories non reconnu:', response);
+          // Ne pas utiliser de catégories par défaut avec des IDs invalides
+          // L'utilisateur devra attendre que les catégories se chargent depuis l'API
+          categoriesData = [];
+        }
+        
+        // Vérifier que toutes les catégories ont des UUIDs valides
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        const validCategories = categoriesData.filter((cat: any) => 
+          cat.id && uuidRegex.test(cat.id)
+        );
+        
+        if (validCategories.length === 0 && categoriesData.length > 0) {
+          console.warn('⚠️ Aucune catégorie avec UUID valide trouvée, les catégories seront récupérées depuis l\'API');
+          categoriesData = [];
+        }
+        
+        const finalCategories = validCategories.length > 0 ? validCategories : categoriesData;
+        console.log(`✅ ${finalCategories.length} catégorie(s) chargée(s) avec UUID valide`);
+        
+        if (finalCategories.length === 0) {
+          console.warn('⚠️ AUCUNE CATÉGORIE DISPONIBLE !');
+          console.warn('💡 Pour créer des catégories, exécutez: python manage.py create_default_categories');
+        }
+        
+        setCategories(finalCategories);
+      } catch (error) {
+        console.error('❌ Erreur lors du chargement des catégories:', error);
+        // En cas d'erreur, ne pas utiliser de catégories par défaut avec des IDs invalides
+        setCategories([]);
+        console.error('💡 Pour créer des catégories, exécutez: python manage.py create_default_categories');
+      } finally {
+        setLoadingCategories(false);
+      }
+    };
+
+    loadCategories();
+  }, []);
+
+  // Images locales disponibles dans /Res
+  const localImages = [
+    '/Res/boutique.jpg',
+    '/Res/boutiqueMarie%20Diallo.jpg',
+    '/Res/boutque.jpg',
+    '/Res/couture.jpg',
+    '/Res/iwaria-inc-JnOFLg09yRE-unsplash.jpg',
+    '/Res/iwaria-inc-tvTFMDwH-cQ-unsplash.jpg',
+    '/Res/mak-K8vfT-8xxEQ-unsplash.jpg',
+    '/Res/mathieu-gauzy-qLT3rBVwiLY-unsplash.jpg',
+    '/Res/monody-le-mZ_7CuqsRV0-unsplash.jpg',
+    '/Res/rutendo-petros-Tzp_yd6W8LM-unsplash.jpg',
+    '/Res/shivansh-sharma-l2cFxUEEY7I-unsplash.jpg',
+    '/Res/stefan-buhler-qQY44BbC2mw-unsplash.jpg',
+    '/Res/SuperMarche.jpg',
+    '/Res/tr-n-thanh-h-i-g7pcs7FYx0Y-unsplash.jpg',
+  ];
+
+  const handleLocalImageSelect = (imagePath: string) => {
+    if (formData.localImages.includes(imagePath)) {
+      setFormData(prev => ({
+        ...prev,
+        localImages: prev.localImages.filter(img => img !== imagePath)
+      }));
+    } else {
+      if (formData.localImages.length + formData.images.length < 5) {
+        setFormData(prev => ({
+          ...prev,
+          localImages: [...prev.localImages, imagePath]
+        }));
+      } else {
+        alert('Maximum 5 images au total (upload + locales)');
+      }
+    }
+  };
+
+  const removeLocalImage = (imagePath: string) => {
+    setFormData(prev => ({
+      ...prev,
+      localImages: prev.localImages.filter(img => img !== imagePath)
+    }));
+  };
 
   const validationSchema = yup.object().shape({
     nom: yup.string().required('Le nom est requis'),
@@ -69,8 +175,17 @@ const ProductForm: React.FC<ProductFormProps> = ({
     prix_achat: yup.number().positive('Le prix d\'achat doit être positif').required('Le prix d\'achat est requis'),
     prix_vente: yup.number().positive('Le prix de vente doit être positif').required('Le prix de vente est requis'),
     stock_minimum: yup.number().min(0, 'Le stock minimum ne peut pas être négatif').required('Le stock minimum est requis'),
+    stock_maximum: yup.number().min(0, 'Le stock maximum ne peut pas être négatif').test(
+      'is-greater-than-min',
+      'Le stock maximum doit être supérieur ou égal au stock minimum',
+      function(value) {
+        const { stock_minimum } = this.parent;
+        return !value || value >= stock_minimum;
+      }
+    ),
     stock_initial: yup.number().min(0, 'Le stock initial ne peut pas être négatif').required('Le stock initial est requis'),
     categorie: yup.string().required('La catégorie est requise'),
+    marque: yup.string().required('La marque est requise'),
     sku: yup.string().required('Le SKU est requis'),
   });
 
@@ -98,8 +213,14 @@ const ProductForm: React.FC<ProductFormProps> = ({
       return true;
     });
     
-    // Limiter à 5 images maximum
-    const newImages = [...formData.images, ...validFiles].slice(0, 5);
+    // Limiter à 5 images maximum au total (upload + locales)
+    const totalImages = formData.images.length + formData.localImages.length;
+    const remainingSlots = 5 - totalImages;
+    if (remainingSlots <= 0) {
+      alert('Maximum 5 images au total (upload + locales)');
+      return;
+    }
+    const newImages = [...formData.images, ...validFiles].slice(0, remainingSlots);
     setFormData(prev => ({ ...prev, images: newImages }));
   };
 
@@ -316,19 +437,27 @@ const ProductForm: React.FC<ProductFormProps> = ({
               value={formData.categorie}
               onChange={(e) => handleInputChange('categorie', e.target.value)}
               className={`input-premium w-full ${errors.categorie ? 'border-red-500' : ''}`}
+              disabled={loadingCategories}
             >
-              <option value="">Sélectionner une catégorie</option>
-              <option value="electronique">Électronique</option>
-              <option value="vetements">Vêtements</option>
-              <option value="maison">Maison & Jardin</option>
-              <option value="sport">Sport & Loisirs</option>
-              <option value="beaute">Beauté & Santé</option>
-              <option value="livres">Livres & Médias</option>
-              <option value="automobile">Automobile</option>
-              <option value="alimentation">Alimentation</option>
-              <option value="autre">Autre</option>
+              <option value="">
+                {loadingCategories 
+                  ? 'Chargement des catégories...' 
+                  : categories.length === 0 
+                    ? 'Aucune catégorie disponible' 
+                    : 'Sélectionner une catégorie'}
+              </option>
+              {categories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.nom}
+                </option>
+              ))}
             </select>
             {errors.categorie && <p className="text-red-500 text-sm mt-1">{errors.categorie}</p>}
+            {!loadingCategories && categories.length === 0 && (
+              <p className="text-yellow-600 dark:text-yellow-400 text-sm mt-1">
+                ⚠️ Aucune catégorie disponible. Veuillez exécuter: <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">python manage.py create_default_categories</code>
+              </p>
+            )}
           </div>
 
           <div>
@@ -381,9 +510,11 @@ const ProductForm: React.FC<ProductFormProps> = ({
         {/* Images */}
         <div>
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Images du produit
+            Images du produit ({formData.images.length + formData.localImages.length}/5)
           </label>
-          <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-6 text-center">
+          
+          {/* Upload d'images */}
+          <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-6 text-center mb-4">
             <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
             <p className="text-gray-600 dark:text-gray-300 mb-2">
               Glissez-déposez vos images ou cliquez pour sélectionner
@@ -401,34 +532,107 @@ const ProductForm: React.FC<ProductFormProps> = ({
               className="btn-secondary cursor-pointer inline-flex items-center"
             >
               <Upload className="w-4 h-4 mr-2" />
-              Sélectionner des images
+              Télécharger des images
             </label>
           </div>
-          
-          {formData.images.length > 0 && (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
-              {formData.images.map((image, index) => (
-                <div key={index} className="relative group">
-                  <img
-                    src={URL.createObjectURL(image)}
-                    alt={`Preview ${index + 1}`}
-                    className="w-full h-24 object-cover rounded-lg border border-gray-200"
-                    onError={(e) => {
-                      e.currentTarget.src = 'https://images.pexels.com/photos/33239/wheat-field-wheat-yellow-grain.jpg?auto=compress&cs=tinysrgb&w=400&h=400&dpr=2';
-                    }}
-                  />
+
+          {/* Sélection d'images locales */}
+          <div className="mb-4">
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Ou choisir depuis les images locales :
+            </p>
+            <div className="grid grid-cols-3 md:grid-cols-5 gap-2 max-h-48 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+              {localImages.map((imagePath) => {
+                const isSelected = formData.localImages.includes(imagePath);
+                return (
                   <button
+                    key={imagePath}
                     type="button"
-                    onClick={() => removeImage(index)}
-                    className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={() => handleLocalImageSelect(imagePath)}
+                    className={`relative aspect-square rounded-lg border-2 overflow-hidden transition-all ${
+                      isSelected
+                        ? 'border-primary-500 ring-2 ring-primary-200 dark:ring-primary-800'
+                        : 'border-gray-200 dark:border-gray-700 hover:border-primary-300'
+                    }`}
                   >
-                    <X className="w-3 h-3" />
+                    <img
+                      src={imagePath}
+                      alt={imagePath.split('/').pop()}
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        e.currentTarget.src = 'https://via.placeholder.com/150';
+                      }}
+                    />
+                    {isSelected && (
+                      <div className="absolute inset-0 bg-primary-500/20 flex items-center justify-center">
+                        <div className="w-6 h-6 bg-primary-500 rounded-full flex items-center justify-center">
+                          <X className="w-4 h-4 text-white" />
+                        </div>
+                      </div>
+                    )}
                   </button>
-                  <div className="absolute bottom-1 left-1 bg-black bg-opacity-50 text-white text-xs px-1 rounded">
-                    {index + 1}
+                );
+              })}
+            </div>
+          </div>
+          
+          {/* Aperçu des images sélectionnées */}
+          {(formData.images.length > 0 || formData.localImages.length > 0) && (
+            <div>
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Images sélectionnées :
+              </p>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {/* Images uploadées */}
+                {formData.images.map((image, index) => (
+                  <div key={`upload-${index}`} className="relative group">
+                    <img
+                      src={URL.createObjectURL(image)}
+                      alt={`Upload ${index + 1}`}
+                      className="w-full h-24 object-cover rounded-lg border border-gray-200 dark:border-gray-700"
+                      onError={(e) => {
+                        e.currentTarget.src = 'https://via.placeholder.com/150';
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeImage(index)}
+                      className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                    <div className="absolute bottom-1 left-1 bg-black bg-opacity-50 text-white text-xs px-1 rounded">
+                      {index + 1}
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+                {/* Images locales */}
+                {formData.localImages.map((imagePath, index) => (
+                  <div key={`local-${index}`} className="relative group">
+                    <img
+                      src={imagePath}
+                      alt={`Local ${index + 1}`}
+                      className="w-full h-24 object-cover rounded-lg border border-gray-200 dark:border-gray-700"
+                      onError={(e) => {
+                        e.currentTarget.src = 'https://via.placeholder.com/150';
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeLocalImage(imagePath)}
+                      className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                    <div className="absolute bottom-1 left-1 bg-black bg-opacity-50 text-white text-xs px-1 rounded">
+                      {formData.images.length + index + 1}
+                    </div>
+                    <div className="absolute top-1 right-1 bg-blue-500 text-white text-xs px-1 rounded">
+                      Local
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>

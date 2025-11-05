@@ -241,9 +241,18 @@ function AnimatedForm<T extends FieldValues>({
                   >
                     <input
                       type="file"
+                      multiple={field.name === 'images'}
                       onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        onChange(file);
+                        const files = e.target.files;
+                        if (files) {
+                          if (field.name === 'images') {
+                            // Pour les images multiples, retourner FileList ou tableau
+                            onChange(files.length > 0 ? Array.from(files) : null);
+                          } else {
+                            // Pour un seul fichier
+                            onChange(files[0] || null);
+                          }
+                        }
                       }}
                       className="hidden"
                       id={field.name}

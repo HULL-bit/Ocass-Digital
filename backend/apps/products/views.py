@@ -8,6 +8,7 @@ from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
+from django.db import models
 from .models import Produit, Categorie, Marque, Fournisseur, Bundle, ImageProduit
 from .serializers import (
     ProduitSerializer, ProduitListSerializer, ProduitCreateSerializer, CategorieSerializer, MarqueSerializer,
@@ -42,11 +43,17 @@ class ProduitViewSet(viewsets.ModelViewSet):
             return ProduitListSerializer  # Serializer optimisé pour les listes
         return ProduitSerializer
     
+    def get_serializer_context(self):
+        """Ajouter le contexte de la requête au serializer."""
+        context = super().get_serializer_context()
+        context['request'] = self.request
+        return context
+    
     def get_permissions(self):
         """
         Instantiates and returns the list of permissions that this view requires.
         """
-        if self.action == 'list' or self.action == 'retrieve':
+        if self.action in ['list', 'retrieve', 'ultra_fast_list', 'fast_list', 'popular']:
             # Permettre l'accès en lecture seule pour tous les utilisateurs
             permission_classes = [AllowAny]
         else:
@@ -67,8 +74,8 @@ class ProduitViewSet(viewsets.ModelViewSet):
             'id', 'nom', 'description_courte', 'categorie', 'marque', 'entreprise',
             'sku', 'prix_vente', 'prix_promotion', 'statut', 'popularite_score',
             'nombre_vues', 'nombre_ventes', 'slug', 'en_promotion',
-            'vendable', 'visible_catalogue', 'date_creation'
-        )
+            'vendable', 'visible_catalogue', 'date_creation', 'stock'
+        ).order_by('-date_creation')  # Ajouter un ordre par défaut
         
         # Si l'utilisateur n'est pas authentifié, retourner les produits visibles
         if not user.is_authenticated:
@@ -138,15 +145,26 @@ class ProduitViewSet(viewsets.ModelViewSet):
         
         # Mettre à jour le stock du produit
         stock_initial = self.request.data.get('stock_initial', self.request.data.get('stock', 0))
+        print(f"🔍 Debug stock - stock_initial: {stock_initial}")
+        print(f"🔍 Debug stock - request.data: {dict(self.request.data)}")
+        
         if stock_initial:
             try:
                 stock_value = int(stock_initial)
+                print(f"🔍 Debug stock - stock_value converti: {stock_value}")
                 if stock_value > 0:
                     produit.stock = stock_value
                     produit.save(update_fields=['stock'])
-            except (ValueError, TypeError):
+                    print(f"✅ Stock mis à jour pour {produit.nom}: {stock_value}")
+                else:
+                    print(f"⚠️ Stock value est 0 ou négatif: {stock_value}")
+            except (ValueError, TypeError) as e:
+                print(f"❌ Erreur lors de la mise à jour du stock: {e}")
+                print(f"🔍 Type de stock_initial: {type(stock_initial)}")
                 # Si la valeur n'est pas un nombre valide, ignorer
                 pass
+        else:
+            print(f"⚠️ Aucun stock fourni dans la requête")
         
         # Gérer les images uploadées depuis la requête
         if hasattr(self.request, 'FILES') and 'images' in self.request.FILES:
@@ -165,6 +183,83 @@ class ProduitViewSet(viewsets.ModelViewSet):
                     print(f"❌ Erreur lors de l'upload de l'image {i+1}: {e}")
         else:
             print("⚠️ Aucune image fournie pour le produit")
+    
+    def perform_destroy(self, instance):
+        """Override pour gérer la suppression de produits avec vérifications."""
+        user = self.request.user
+        
+        # Vérifier que l'utilisateur peut supprimer ce produit
+        if user.type_utilisateur == 'entrepreneur' and user.entreprise:
+            if instance.entreprise != user.entreprise:
+                from rest_framework.exceptions import PermissionDenied
+                raise PermissionDenied("Vous ne pouvez supprimer que les produits de votre entreprise.")
+        elif user.type_utilisateur != 'admin':
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Vous n'avez pas les permissions pour supprimer ce produit.")
+        
+        # Supprimer les images associées
+        images = instance.images.all()
+        for image in images:
+            try:
+                image.delete()
+                print(f"✅ Image supprimée: {image.image.name}")
+            except Exception as e:
+                print(f"❌ Erreur lors de la suppression de l'image: {e}")
+        
+        # Supprimer le produit
+        print(f"✅ Suppression du produit: {instance.nom}")
+        instance.delete()
+    
+    def perform_update(self, serializer):
+        """Override pour gérer la mise à jour de produits avec vérifications."""
+        user = self.request.user
+        instance = serializer.instance
+        
+        # Vérifier que l'utilisateur peut modifier ce produit
+        if user.type_utilisateur == 'entrepreneur' and user.entreprise:
+            if instance.entreprise != user.entreprise:
+                from rest_framework.exceptions import PermissionDenied
+                raise PermissionDenied("Vous ne pouvez modifier que les produits de votre entreprise.")
+        elif user.type_utilisateur != 'admin':
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Vous n'avez pas les permissions pour modifier ce produit.")
+        
+        # Sauvegarder les modifications
+        produit = serializer.save()
+        
+        # Mettre à jour le stock si fourni
+        stock_update = self.request.data.get('stock', None)
+        if stock_update is not None:
+            try:
+                stock_value = int(stock_update)
+                if stock_value >= 0:  # Permettre 0 pour vider le stock
+                    produit.stock = stock_value
+                    produit.save(update_fields=['stock'])
+                    print(f"✅ Stock mis à jour pour {produit.nom}: {stock_value}")
+            except (ValueError, TypeError) as e:
+                print(f"❌ Erreur lors de la mise à jour du stock: {e}")
+        
+        # Gérer les nouvelles images uploadées
+        if hasattr(self.request, 'FILES') and 'images' in self.request.FILES:
+            images_files = self.request.FILES.getlist('images')
+            print(f"📸 {len(images_files)} nouvelle(s) image(s) à ajouter pour {produit.nom}")
+            
+            for i, image_file in enumerate(images_files):
+                try:
+                    ImageProduit.objects.create(
+                        produit=produit,
+                        image=image_file,
+                        alt_text=f'Image de {produit.nom}',
+                        principale=False,  # Ne pas remplacer l'image principale existante
+                        ordre_affichage=produit.images.count() + i
+                    )
+                    print(f"✅ Image {i+1} ajoutée avec succès pour {produit.nom}")
+                except Exception as e:
+                    print(f"❌ Erreur lors de l'ajout de l'image {i+1}: {e}")
+        else:
+            print("ℹ️ Aucune nouvelle image fournie pour la mise à jour")
+        
+        print(f"✅ Produit mis à jour: {produit.nom}")
     
     @action(detail=True, methods=['post'])
     def increment_views(self, request, pk=None):
@@ -209,6 +304,58 @@ class ProduitViewSet(viewsets.ModelViewSet):
         cache.set(cache_key, data, 600)
         
         return Response(data)
+    
+    @action(detail=False, methods=['get'])
+    def ultra_fast_list(self, request):
+        """Liste ultra-rapide des produits avec pagination optimisée."""
+        page = int(request.GET.get('page', 1))
+        page_size = min(int(request.GET.get('page_size', 15)), 50)  # Limiter à 50 max
+        
+        # Requête ULTRA-optimisée - éviter les jointures coûteuses
+        queryset = Produit.objects.only(
+            'id', 'nom', 'sku', 'prix_vente', 'statut', 'stock', 'date_creation'
+        ).filter(
+            visible_catalogue=True, 
+            statut='actif'
+        ).order_by('-date_creation')
+        
+        # Pagination manuelle pour éviter les requêtes lourdes
+        start = (page - 1) * page_size
+        end = start + page_size
+        
+        # Récupérer seulement les produits de cette page + 1 pour savoir s'il y a une page suivante
+        produits = list(queryset[start:end + 1])
+        
+        # Déterminer s'il y a une page suivante
+        has_next = len(produits) > page_size
+        if has_next:
+            produits = produits[:page_size]  # Enlever le produit supplémentaire
+        
+        # Serializer minimal - pas de jointures
+        data = []
+        for produit in produits:
+            data.append({
+                'id': str(produit.id),
+                'nom': produit.nom,
+                'sku': produit.sku,
+                'prix_vente': float(produit.prix_vente),
+                'stock': produit.stock,
+                'categorie_nom': 'Non classé',  # Éviter la jointure
+                'marque_nom': 'Sans marque',    # Éviter la jointure
+                'statut': produit.statut
+            })
+        
+        response_data = {
+            'results': data,
+            'count': len(data),  # Pas de count total pour éviter la requête lourde
+            'next': f'?page={page + 1}&page_size={page_size}' if has_next else None,
+            'previous': f'?page={page - 1}&page_size={page_size}' if page > 1 else None,
+            'page': page,
+            'page_size': page_size,
+            'has_next': has_next
+        }
+        
+        return Response(response_data)
     
     @action(detail=False, methods=['get'])
     def fast_list(self, request):
@@ -345,3 +492,47 @@ class ImageProduitViewSet(viewsets.ModelViewSet):
             return ImageProduit.objects.all()
         else:
             return ImageProduit.objects.filter(produit__entreprise=user.entreprise) if user.entreprise else ImageProduit.objects.none()
+    
+    def get_serializer_context(self):
+        """Ajouter le contexte de la requête au serializer."""
+        context = super().get_serializer_context()
+        context['request'] = self.request
+        return context
+    
+    def perform_create(self, serializer):
+        """Créer une image avec gestion de l'ordre d'affichage."""
+        produit = serializer.validated_data.get('produit')
+        
+        # Calculer l'ordre d'affichage si non spécifié
+        ordre_affichage = serializer.validated_data.get('ordre_affichage')
+        if not ordre_affichage:
+            max_order = ImageProduit.objects.filter(produit=produit).aggregate(
+                max_order=models.Max('ordre_affichage')
+            )['max_order'] or 0
+            ordre_affichage = max_order + 1
+        
+        # Vérifier si c'est la première image ou si principale est demandée
+        principale = serializer.validated_data.get('principale', False)
+        has_principal = ImageProduit.objects.filter(produit=produit, principale=True).exists()
+        
+        if principale or not has_principal:
+            # Désactiver les autres images principales du même produit
+            ImageProduit.objects.filter(produit=produit, principale=True).update(principale=False)
+            principale = True
+        
+        # Sauvegarder avec les valeurs calculées
+        instance = serializer.save(
+            ordre_affichage=ordre_affichage,
+            principale=principale
+        )
+        print(f"✅ Image créée avec succès pour le produit {instance.produit.id}")
+    
+    def perform_update(self, serializer):
+        """Mettre à jour une image avec gestion de l'image principale."""
+        instance = serializer.save()
+        
+        # Si cette image est marquée comme principale, désactiver les autres
+        if instance.principale:
+            ImageProduit.objects.filter(produit=instance.produit, principale=True).exclude(id=instance.id).update(principale=False)
+        
+        print(f"✅ Image mise à jour avec succès pour le produit {instance.produit.id}")

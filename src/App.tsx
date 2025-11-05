@@ -16,6 +16,8 @@ import LoadingScreen from './components/ui/LoadingScreen';
 import ErrorBoundary from './components/ui/ErrorBoundary';
 import ParticlesBackground from './components/ui/ParticlesBackground';
 import './index.css';
+import LandingPage from './pages/public/LandingPage';
+import PublicCatalogPage from './pages/public/PublicCatalogPage';
 
 function App() {
   return (
@@ -62,8 +64,9 @@ function App() {
                       } 
                     />
                     
-                    {/* Redirection par défaut */}
-                    <Route path="/" element={<Navigate to="/auth/login" replace />} />
+                    {/* Pages publiques */}
+                    <Route path="/" element={<LandingPage />} />
+                    <Route path="/catalogue" element={<PublicCatalogPage />} />
                     <Route path="*" element={<Navigate to="/auth/login" replace />} />
                   </Routes>
                 </div>

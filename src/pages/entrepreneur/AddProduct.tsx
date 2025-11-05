@@ -4,8 +4,8 @@ import { Package, ArrowLeft, Plus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import ProductForm from '../../components/forms/ProductForm';
 import Button from '../../components/ui/Button';
-import { useApi } from '../../hooks/useApi';
 import { useAuth } from '../../contexts/AuthContext';
+import apiService from '../../services/api/realApi';
 
 interface ProductFormData {
   nom: string;
@@ -17,6 +17,7 @@ interface ProductFormData {
   stock_maximum: number;
   stock_initial: number;
   categorie: string;
+  marque: string;
   code_barre: string;
   sku: string;
   tva_taux: number;
@@ -25,13 +26,13 @@ interface ProductFormData {
   couleur: string;
   materiau: string;
   images: File[];
+  localImages: string[];
   tags: string[];
 }
 
 const AddProduct: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { post } = useApi();
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (data: ProductFormData) => {
@@ -71,44 +72,146 @@ const AddProduct: React.FC = () => {
         formData.append('materiaux_disponibles', JSON.stringify([data.materiau]));
       }
       
-      // Ajouter les images
+      // Ajouter les images uploadées
       if (data.images && data.images.length > 0) {
         data.images.forEach((image, index) => {
           formData.append('images', image);
         });
       }
-      
-      // Gérer la catégorie
-      if (data.categorie) {
+
+      // Gérer les images locales : convertir les URLs en fichiers si possible
+      if (data.localImages && data.localImages.length > 0) {
         try {
-          // Utiliser l'API service pour créer ou récupérer la catégorie
-          const categoryData = {
-            nom: data.categorie,
-            description: `Catégorie ${data.categorie}`,
-            slug: data.categorie.toLowerCase().replace(/\s+/g, '-'),
-            active: true
-          };
-          
-          const categoryResponse = await post('/api/v1/products/categories/', categoryData);
-          formData.append('categorie', categoryResponse.id);
+          for (const imageUrl of data.localImages) {
+            // Télécharger l'image locale et la convertir en File
+            const response = await fetch(imageUrl);
+            const blob = await response.blob();
+            const fileName = imageUrl.split('/').pop() || 'local-image.jpg';
+            const file = new File([blob], fileName, { type: blob.type });
+            formData.append('images', file);
+          }
         } catch (error) {
-          console.error('Erreur lors de la création de la catégorie:', error);
-          // Utiliser une catégorie par défaut (Alimentation)
-          formData.append('categorie', '7e825032-588c-49c5-84db-5677b4721800');
+          console.error('Erreur lors de la conversion des images locales:', error);
+          // Si la conversion échoue, on peut quand même envoyer les URLs
+          formData.append('local_images', JSON.stringify(data.localImages));
         }
       }
       
-      // Utiliser une marque par défaut
-      formData.append('marque', 'c2cab192-96d3-4279-afef-d1b80e86144e');
+      // Gérer la marque : créer ou récupérer la marque
+      if (data.marque && data.marque.trim()) {
+        try {
+          // Essayer d'abord de récupérer la marque par son nom
+          const marquesResponse = await apiService.request('/products/marques/');
+          const marques = Array.isArray(marquesResponse) ? marquesResponse : 
+                         (marquesResponse.results || marquesResponse.data || []);
+          
+          let marqueId = null;
+          const marqueExistant = marques.find((m: any) => 
+            m.nom?.toLowerCase() === data.marque.trim().toLowerCase()
+          );
+          
+          if (marqueExistant) {
+            marqueId = marqueExistant.id;
+            console.log('✅ Marque existante trouvée:', marqueId);
+          } else {
+            // Créer une nouvelle marque
+            try {
+              const nouvelleMarque = await apiService.request('/products/marques/', {
+                method: 'POST',
+                body: JSON.stringify({ nom: data.marque.trim() }),
+              });
+              marqueId = nouvelleMarque.id;
+              console.log('✅ Nouvelle marque créée:', marqueId);
+            } catch (createError: any) {
+              console.error('Erreur lors de la création de la marque:', createError);
+              // Si la création échoue, ne pas bloquer la création du produit
+              console.warn('⚠️ Marque non créée, produit créé sans marque');
+            }
+          }
+          
+          if (marqueId) {
+            formData.append('marque', marqueId);
+          }
+        } catch (error: any) {
+          console.error('Erreur lors de la gestion de la marque:', error);
+          // Ne pas bloquer la création du produit si la marque échoue
+        }
+      }
+      
+      // Gérer la catégorie : vérifier que c'est un UUID valide
+      if (data.categorie) {
+        // Vérifier que la catégorie est un UUID valide (format UUID v4)
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        
+        if (uuidRegex.test(data.categorie)) {
+          formData.append('categorie', data.categorie);
+          console.log('✅ Catégorie UUID valide:', data.categorie);
+        } else {
+          // Si ce n'est pas un UUID, essayer de trouver la catégorie par son ID ou son nom
+          console.warn('⚠️ Catégorie n\'est pas un UUID valide:', data.categorie);
+          try {
+            const categoriesResponse = await apiService.getCategories();
+            const categories = Array.isArray(categoriesResponse) ? categoriesResponse : 
+                             (categoriesResponse.results || categoriesResponse.data || []);
+            
+            // Chercher par ID ou par nom si c'est un nombre
+            let categoryFound = null;
+            if (!isNaN(Number(data.categorie))) {
+              // Si c'est un nombre, chercher par index ou nom
+              const categoryIndex = parseInt(data.categorie) - 1;
+              categoryFound = categories[categoryIndex];
+            } else {
+              // Chercher par nom
+              categoryFound = categories.find((c: any) => 
+                c.nom?.toLowerCase() === data.categorie.toLowerCase() ||
+                c.id === data.categorie
+              );
+            }
+            
+            if (categoryFound && categoryFound.id && uuidRegex.test(categoryFound.id)) {
+              formData.append('categorie', categoryFound.id);
+              console.log('✅ Catégorie trouvée par nom/index:', categoryFound.id);
+            } else {
+              // Utiliser la première catégorie disponible comme fallback
+              if (categories.length > 0 && categories[0].id && uuidRegex.test(categories[0].id)) {
+                formData.append('categorie', categories[0].id);
+                console.warn('⚠️ Utilisation de la première catégorie disponible:', categories[0].id);
+              } else {
+                throw new Error('Aucune catégorie valide trouvée');
+              }
+            }
+          } catch (error: any) {
+            console.error('Erreur lors de la recherche de catégorie:', error);
+            alert('Erreur : Veuillez sélectionner une catégorie valide');
+            setLoading(false);
+            return;
+          }
+        }
+      } else {
+        // Si aucune catégorie, essayer de récupérer une catégorie par défaut
+        try {
+          const categoriesResponse = await apiService.getCategories();
+          const categories = Array.isArray(categoriesResponse) ? categoriesResponse : 
+                           (categoriesResponse.results || categoriesResponse.data || []);
+          if (categories.length > 0 && categories[0].id) {
+            formData.append('categorie', categories[0].id);
+            console.warn('⚠️ Aucune catégorie sélectionnée, utilisation de la première:', categories[0].id);
+          } else {
+            throw new Error('Aucune catégorie disponible');
+          }
+        } catch (error) {
+          console.error('Erreur lors de la récupération des catégories:', error);
+          alert('Erreur : Veuillez sélectionner une catégorie');
+          setLoading(false);
+          return;
+        }
+      }
       
       // Envoyer la requête avec l'API service
-      const product = await post('/api/v1/products/products/', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data'
-        }
-      });
+      console.log('📤 Envoi du produit à l\'API...');
+      const product = await apiService.createProduct(formData);
       
-      console.log('Produit créé avec succès:', product);
+      console.log('✅ Produit créé avec succès:', product);
       
       // Rediriger vers la page des produits
       navigate('/entrepreneur/stock');

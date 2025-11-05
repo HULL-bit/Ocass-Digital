@@ -61,7 +61,10 @@ class ApiService {
     const url = `${API_BASE_URL}${endpoint}`;
     const maxRetries = 3;
     
-    console.log('API Request:', { url, options, retryCount });
+    // Log seulement en mode développement ou pour les erreurs
+    if (process.env.NODE_ENV === 'development' && retryCount === 0) {
+      console.log('API Request:', url);
+    }
     
     const config: RequestInit = {
       ...options,
@@ -93,13 +96,14 @@ class ApiService {
     }
 
     try {
-      console.log('Making request to:', url);
-      console.log('Request config:', config);
-      
       const response = await fetch(url, config);
       
-      console.log('Response status:', response.status);
-      console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+      // Lire le contenu de la réponse une seule fois
+      const contentType = response.headers.get('content-type');
+      const hasJsonContent = contentType && contentType.includes('application/json');
+      
+      // Lire le texte de la réponse une seule fois
+      const text = await response.text();
       
       if (!response.ok) {
         if (response.status === 401) {
@@ -111,14 +115,10 @@ class ApiService {
             } catch (refreshError) {
               console.error('Token refresh failed:', refreshError);
               this.logout();
-              // Ne pas rediriger automatiquement pour éviter les boucles
-              // window.location.href = '/auth/login';
               throw new Error('Session expirée');
             }
           } else {
             this.logout();
-            // Ne pas rediriger automatiquement pour éviter les boucles
-            // window.location.href = '/auth/login';
             throw new Error('Session expirée');
           }
         }
@@ -126,16 +126,36 @@ class ApiService {
         let errorMessage = `Erreur ${response.status}`;
         let errorDetails = null;
         
-        try {
-          const errorData = await response.json();
-          console.log('Error response data:', errorData);
-          console.log('Full error details:', JSON.stringify(errorData, null, 2));
-          errorMessage = errorData.message || errorData.detail || errorData.error || errorMessage;
-          errorDetails = errorData;
-        } catch (e) {
-          console.log('Could not parse error response as JSON');
+        // Traiter la réponse d'erreur
+        if (text && text.trim() !== '') {
+          try {
+            const errorData = JSON.parse(text);
+            // Log détaillé des erreurs pour le débogage
+            console.error('❌ Error response (status', response.status, '):', errorData);
+            console.error('📋 Clés d\'erreur:', Object.keys(errorData));
+            
+            // Afficher toutes les erreurs dans la console de manière structurée
+            Object.entries(errorData).forEach(([key, value]: [string, any]) => {
+              if (Array.isArray(value)) {
+                console.error(`  ❌ ${key}:`, value.join(', '));
+              } else if (typeof value === 'object') {
+                console.error(`  ❌ ${key}:`, JSON.stringify(value));
+              } else {
+                console.error(`  ❌ ${key}:`, value);
+              }
+            });
+            
+            errorMessage = errorData.message || errorData.detail || errorData.error || errorMessage;
+            errorDetails = errorData;
+          } catch (e) {
+            // Si le parsing échoue, utiliser le texte brut
+            errorMessage = `Erreur ${response.status}: ${response.statusText}`;
+            errorDetails = { raw: text };
+          }
+        } else {
+          // Réponse d'erreur vide
           errorMessage = `Erreur ${response.status}: ${response.statusText}`;
-          errorDetails = { raw: 'Could not parse response' };
+          errorDetails = { message: errorMessage };
         }
         
         const error = new Error(errorMessage);
@@ -143,9 +163,33 @@ class ApiService {
         throw error;
       }
 
-      const responseData = await response.json();
-      console.log('Response data:', responseData);
-      return responseData;
+      // Traiter la réponse de succès
+      // Si la réponse est vide (204 No Content, etc.), retourner un objet de succès
+      if (response.status === 204 || (text.trim() === '' && response.status === 200)) {
+        return { success: true };
+      }
+      
+      // Si pas de contenu et pas de statut spécial, retourner un objet vide
+      if (!text || text.trim() === '') {
+        return {};
+      }
+      
+      // Essayer de parser le JSON seulement si c'est du contenu JSON ou si le status est OK
+      if (hasJsonContent || response.status === 200 || response.status === 201) {
+        try {
+          return JSON.parse(text);
+        } catch (parseError) {
+          // Si le parsing échoue, retourner un objet vide ou un objet de succès selon le statut
+          console.warn('Failed to parse JSON response:', parseError);
+          if (response.status === 200 || response.status === 201) {
+            return { success: true };
+          }
+          return {};
+        }
+      }
+      
+      // Si ce n'est pas JSON, retourner un objet vide
+      return {};
     } catch (error) {
       console.error('API Error:', error);
       
@@ -182,33 +226,26 @@ class ApiService {
         type_utilisateur: type_utilisateur.trim() 
       };
       
-      console.log('API Service login called with:', loginData);
-      console.log('Login data JSON:', JSON.stringify(loginData));
-      console.log('Data types:', {
-        email: typeof email,
-        password: typeof password,
-        type_utilisateur: typeof type_utilisateur
-      });
+      // Log seulement en mode développement
+      if (process.env.NODE_ENV === 'development') {
+        console.log('API Service login called');
+      }
       
       const response = await this.request('/auth/login/', {
         method: 'POST',
         body: JSON.stringify(loginData),
       });
 
-      console.log('Login response:', response);
-
       if (response.access) {
         this.token = response.access;
         localStorage.setItem('token', response.access);
         localStorage.setItem('refreshToken', response.refresh);
         localStorage.setItem('user', JSON.stringify(response.user));
-        console.log('Token JWT sauvegardé:', response.access);
       }
 
       return response;
     } catch (error) {
       console.error('Login error:', error);
-      console.error('Login error details:', error.response);
       throw error;
     }
   }
@@ -299,42 +336,119 @@ class ApiService {
 
   // Products
   async getProducts(params: any = {}) {
-    const queryString = new URLSearchParams(params).toString();
-    return this.request(`/products/products/?${queryString}`);
+    try {
+      console.log('Fetching products with params:', params);
+      
+      // Utiliser l'endpoint ultra-rapide si pas de paramètres spéciaux
+      if (!params.search && !params.category && !params.brand) {
+        const ultraFastUrl = `/products/products/ultra_fast_list/?page=${params.page || 1}&page_size=${params.page_size || 15}`;
+        console.log('Using ultra-fast endpoint:', ultraFastUrl);
+        return await this.request(ultraFastUrl);
+      }
+      
+      // Sinon utiliser l'endpoint normal
+      const queryString = new URLSearchParams(params).toString();
+      const url = `/products/products/?${queryString}`;
+      console.log('Using normal endpoint:', url);
+      return await this.request(url);
+    } catch (error: any) {
+      console.error('Erreur API getProducts:', error);
+      throw error;
+    }
   }
 
   // Products with pagination support - OPTIMISÉ
   async getAllProducts() {
     try {
-      // Utiliser l'endpoint optimisé fast_list
-      const response = await this.request('/products/products/fast_list/');
-      console.log('getAllProducts (optimisé) response:', response);
-      
-      // Vérifier si la réponse est un objet avec results ou directement un tableau
-      let allProducts = [];
-      if (response.results && Array.isArray(response.results)) {
-        allProducts = response.results;
-      } else if (Array.isArray(response)) {
-        allProducts = response;
-      } else {
-        console.warn('Format de réponse inattendu:', response);
-        return [];
-      }
+      // Essayer d'abord l'endpoint optimisé fast_list
+      try {
+        const response = await this.request('/products/products/fast_list/');
+        console.log('getAllProducts (optimisé) response type:', typeof response);
+        console.log('getAllProducts (optimisé) response keys:', response ? Object.keys(response) : 'null');
+        
+        // Gérer différents formats de réponse
+        let allProducts = [];
+        
+        // Cas 1: Objet avec results (format paginé standard)
+        if (response && response.results && Array.isArray(response.results)) {
+          allProducts = response.results;
+          console.log('✅ Produits extraits depuis response.results:', allProducts.length);
+          
+          // Si la réponse est paginée, récupérer toutes les pages
+          if (response.next) {
+            console.log('📄 Pagination détectée, récupération des pages suivantes...');
+            let currentPage = 2; // On a déjà la page 1
+            let hasMore = !!response.next;
+            
+            while (hasMore) {
+              try {
+                const nextResponse = await this.request(`/products/products/fast_list/?page=${currentPage}`);
+                if (nextResponse && nextResponse.results && Array.isArray(nextResponse.results) && nextResponse.results.length > 0) {
+                  allProducts = allProducts.concat(nextResponse.results);
+                  hasMore = !!nextResponse.next;
+                  currentPage++;
+                  console.log(`📄 Page ${currentPage - 1} récupérée: ${nextResponse.results.length} produits (total: ${allProducts.length})`);
+                } else {
+                  hasMore = false;
+                }
+              } catch (pageError) {
+                console.warn(`Erreur lors de la récupération de la page ${currentPage}:`, pageError);
+                hasMore = false;
+              }
+            }
+          }
+        }
+        // Cas 2: Objet avec data
+        else if (response && response.data !== undefined) {
+          if (Array.isArray(response.data)) {
+            allProducts = response.data;
+            console.log('✅ Produits extraits depuis response.data:', allProducts.length);
+          } else if (response.data && response.data.results && Array.isArray(response.data.results)) {
+            allProducts = response.data.results;
+            console.log('✅ Produits extraits depuis response.data.results:', allProducts.length);
+          } else {
+            console.warn('⚠️ response.data existe mais n\'est pas un tableau:', response.data);
+          }
+        }
+        // Cas 3: Tableau direct
+        else if (Array.isArray(response)) {
+          allProducts = response;
+          console.log('✅ Produits extraits depuis tableau direct:', allProducts.length);
+        }
+        // Cas 4: Endpoint bloqué (status: 'blocked')
+        else if (response && response.status === 'blocked') {
+          console.warn('⚠️ Endpoint fast_list bloqué, utilisation du fallback');
+          return await this.getAllProductsFallback();
+        }
+        // Cas 5: Objet vide ou format inconnu
+        else {
+          console.warn('⚠️ Format de réponse inattendu de fast_list, utilisation du fallback');
+          console.warn('Structure de la réponse:', JSON.stringify(response, null, 2).substring(0, 500));
+          // Si fast_list retourne un objet vide ou bloqué, utiliser le fallback
+          return await this.getAllProductsFallback();
+        }
 
-      console.log('getAllProducts (optimisé) final result:', allProducts.length, 'produits');
-      
-      // Mettre en cache les produits pour la synchronisation
-      if (allProducts.length > 0) {
-        localStorage.setItem('cached_products', JSON.stringify({
-          products: allProducts,
-          timestamp: Date.now(),
-          version: '2.0-optimized'
-        }));
+        console.log('✅ getAllProducts (optimisé) final result:', allProducts.length, 'produits');
+        
+        // Mettre en cache les produits pour la synchronisation
+        if (allProducts.length > 0) {
+          localStorage.setItem('cached_products', JSON.stringify({
+            products: allProducts,
+            timestamp: Date.now(),
+            version: '2.0-optimized'
+          }));
+          return allProducts;
+        } else {
+          // Si aucun produit, essayer le fallback
+          console.warn('⚠️ fast_list retourne 0 produit, utilisation du fallback');
+          return await this.getAllProductsFallback();
+        }
+      } catch (fastListError: any) {
+        console.warn('⚠️ Erreur avec fast_list, utilisation du fallback:', fastListError);
+        return await this.getAllProductsFallback();
       }
-      
-      return allProducts;
     } catch (error) {
-      console.error('Erreur lors du chargement des produits optimisés:', error);
+      console.error('❌ Erreur lors du chargement des produits optimisés:', error);
       // Fallback vers l'ancienne méthode si l'endpoint optimisé n'existe pas
       return await this.getAllProductsFallback();
     }
@@ -342,33 +456,79 @@ class ApiService {
 
   // Méthode de fallback pour la compatibilité
   async getAllProductsFallback() {
+    console.log('🔄 Utilisation de getAllProductsFallback()...');
     let allProducts = [];
     let page = 1;
     let hasNext = true;
+    const maxPages = 100; // Sécurité pour éviter les boucles infinies
 
-    while (hasNext) {
+    while (hasNext && page <= maxPages) {
       try {
-        const response = await this.request(`/products/products/?page=${page}`);
-        console.log('getAllProducts fallback response:', response);
+        console.log(`📄 Récupération de la page ${page}...`);
+        const response = await this.request(`/products/products/?page=${page}&page_size=100`);
+        console.log(`📄 Page ${page} réponse:`, {
+          hasResults: !!response?.results,
+          resultsLength: response?.results?.length || 0,
+          hasNext: !!response?.next,
+          isArray: Array.isArray(response),
+          hasData: !!response?.data
+        });
         
-        if (response.results && Array.isArray(response.results)) {
-          allProducts = allProducts.concat(response.results);
-          hasNext = !!response.next;
-          page++;
+        // Gérer différents formats de réponse
+        if (response && response.results && Array.isArray(response.results)) {
+          if (response.results.length > 0) {
+            allProducts = allProducts.concat(response.results);
+            hasNext = !!response.next;
+            page++;
+            console.log(`✅ Page ${page - 1} récupérée: ${response.results.length} produits (total: ${allProducts.length})`);
+          } else {
+            hasNext = false;
+            console.log('✅ Toutes les pages ont été récupérées (page vide)');
+          }
         } else if (Array.isArray(response)) {
           allProducts = allProducts.concat(response);
           hasNext = false;
+          console.log('✅ Réponse directe (tableau) récupérée:', response.length, 'produits');
+        } else if (response && response.data !== undefined) {
+          // Gérer response.data
+          if (Array.isArray(response.data)) {
+            allProducts = allProducts.concat(response.data);
+            hasNext = false;
+            console.log('✅ Produits récupérés depuis response.data:', response.data.length);
+          } else if (response.data && response.data.results && Array.isArray(response.data.results)) {
+            allProducts = allProducts.concat(response.data.results);
+            hasNext = !!response.data.next;
+            page++;
+            console.log(`✅ Page ${page - 1} récupérée depuis response.data.results: ${response.data.results.length} produits`);
+          } else {
+            console.warn('⚠️ response.data existe mais format inattendu:', response.data);
+            hasNext = false;
+          }
         } else {
-          console.warn('Unexpected response structure:', response);
+          console.warn('⚠️ Structure de réponse inattendue dans le fallback:', {
+            type: typeof response,
+            keys: response ? Object.keys(response) : 'null',
+            isArray: Array.isArray(response)
+          });
           hasNext = false;
         }
-      } catch (error) {
-        console.error(`Error fetching page ${page}:`, error);
+      } catch (error: any) {
+        console.error(`❌ Erreur lors de la récupération de la page ${page}:`, error);
         hasNext = false;
       }
     }
 
-    console.log('getAllProducts fallback final result:', allProducts);
+    console.log(`✅ getAllProductsFallback final result: ${allProducts.length} produits`);
+    
+    // Mettre en cache les produits
+    if (allProducts.length > 0) {
+      localStorage.setItem('cached_products', JSON.stringify({
+        products: allProducts,
+        timestamp: Date.now(),
+        version: '2.0-fallback'
+      }));
+    }
+    
     return allProducts;
   }
 
@@ -380,63 +540,73 @@ class ApiService {
     try {
       console.log('Creating product with data:', productData);
       
-      // Utiliser FormData pour supporter les images
-      const formData = new FormData();
+      // Si productData est déjà un FormData, l'utiliser directement
+      let formData: FormData;
+      if (productData instanceof FormData) {
+        formData = productData;
+        console.log('✅ Utilisation du FormData fourni directement');
+      } else {
+        // Sinon, créer un nouveau FormData
+        formData = new FormData();
+        
+        // Ajouter les champs de base
+        formData.append('nom', productData.nom);
+        formData.append('description_courte', productData.description_courte || 'Description courte');
+        formData.append('description_longue', productData.description_longue || productData.description_courte || 'Description longue');
+        formData.append('prix_achat', productData.prix_achat.toString());
+        formData.append('prix_vente', productData.prix_vente.toString());
+        
+        // Gérer le stock - utiliser stock_initial ou stock selon ce qui est disponible
+        const stockValue = productData.stock_initial || productData.stock || 0;
+        formData.append('stock', stockValue.toString());
+        formData.append('sku', productData.sku);
+        if (productData.code_barre) {
+          formData.append('code_barre', productData.code_barre);
+        }
+        formData.append('slug', productData.slug);
+        formData.append('categorie', productData.categorie);
+        formData.append('marque', productData.marque);
+        formData.append('unite_mesure', productData.unite_mesure || 'piece');
+        formData.append('tva_taux', (productData.tva_taux || 18.0).toString());
+        formData.append('statut', productData.statut || 'actif');
+        formData.append('vendable', (productData.vendable !== undefined ? productData.vendable : true).toString());
+        formData.append('achetable', (productData.achetable !== undefined ? productData.achetable : true).toString());
+        formData.append('visible_catalogue', (productData.visible_catalogue !== undefined ? productData.visible_catalogue : true).toString());
+        
+        // Ajouter les champs optionnels
+        if (productData.dimensions && Object.keys(productData.dimensions).length > 0) {
+          formData.append('dimensions', JSON.stringify(productData.dimensions));
+        }
+        if (productData.couleurs_disponibles && productData.couleurs_disponibles.length > 0) {
+          formData.append('couleurs_disponibles', JSON.stringify(productData.couleurs_disponibles));
+        }
+        if (productData.tailles_disponibles && productData.tailles_disponibles.length > 0) {
+          formData.append('tailles_disponibles', JSON.stringify(productData.tailles_disponibles));
+        }
+        if (productData.point_recommande) {
+          formData.append('point_recommande', productData.point_recommande.toString());
+        }
+        if (productData.poids) {
+          formData.append('poids', productData.poids.toString());
+        }
+        if (productData.date_peremption) {
+          formData.append('date_peremption', productData.date_peremption);
+        }
+        if (productData.duree_conservation) {
+          formData.append('duree_conservation', productData.duree_conservation.toString());
+        }
+        
+        // Ajouter les images si présentes
+        if (productData.images && productData.images.length > 0) {
+          productData.images.forEach((image: File) => {
+            formData.append('images', image);
+          });
+          console.log(`✅ ${productData.images.length} image(s) ajoutée(s) au FormData`);
+        } else {
+          console.log("⚠️ Aucune image fournie pour le produit");
+        }
+      }
       
-      // Ajouter les champs de base
-      formData.append('nom', productData.nom);
-      formData.append('description_courte', productData.description_courte || 'Description courte');
-      formData.append('description_longue', productData.description_longue || productData.description_courte || 'Description longue');
-      formData.append('prix_achat', productData.prix_achat.toString());
-      formData.append('prix_vente', productData.prix_vente.toString());
-      
-      // Gérer le stock - utiliser stock_initial ou stock selon ce qui est disponible
-      const stockValue = productData.stock_initial || productData.stock || 0;
-      formData.append('stock', stockValue.toString());
-      formData.append('sku', productData.sku);
-      if (productData.code_barre) {
-        formData.append('code_barre', productData.code_barre);
-      }
-      formData.append('slug', productData.slug);
-      formData.append('categorie', productData.categorie);
-      formData.append('marque', productData.marque);
-      formData.append('unite_mesure', productData.unite_mesure || 'piece');
-      formData.append('tva_taux', (productData.tva_taux || 18.0).toString());
-      formData.append('statut', productData.statut || 'actif');
-      formData.append('vendable', (productData.vendable !== undefined ? productData.vendable : true).toString());
-      formData.append('achetable', (productData.achetable !== undefined ? productData.achetable : true).toString());
-      formData.append('visible_catalogue', (productData.visible_catalogue !== undefined ? productData.visible_catalogue : true).toString());
-      
-      // Ajouter les champs optionnels
-      if (productData.dimensions && Object.keys(productData.dimensions).length > 0) {
-        formData.append('dimensions', JSON.stringify(productData.dimensions));
-      }
-      if (productData.couleurs_disponibles && productData.couleurs_disponibles.length > 0) {
-        formData.append('couleurs_disponibles', JSON.stringify(productData.couleurs_disponibles));
-      }
-      if (productData.tailles_disponibles && productData.tailles_disponibles.length > 0) {
-        formData.append('tailles_disponibles', JSON.stringify(productData.tailles_disponibles));
-      }
-      if (productData.point_recommande) {
-        formData.append('point_recommande', productData.point_recommande.toString());
-      }
-      if (productData.poids) {
-        formData.append('poids', productData.poids.toString());
-      }
-      if (productData.date_peremption) {
-        formData.append('date_peremption', productData.date_peremption);
-      }
-      if (productData.duree_conservation) {
-        formData.append('duree_conservation', productData.duree_conservation.toString());
-      }
-      
-      // Ajouter les images si présentes
-      if (productData.images && productData.images.length > 0) {
-        productData.images.forEach((image: File) => {
-          formData.append('images', image);
-        });
-      }
-
       console.log('FormData prepared for product creation');
 
       return await this.request('/products/products/', {
@@ -458,14 +628,14 @@ class ApiService {
       
       const formData = new FormData();
       formData.append('image', imageFile);
-      formData.append('produit', productId);
-      formData.append('principale', 'true');
+      formData.append('produit', productId); // L'ID du produit
+      formData.append('principale', 'false'); // Le backend gérera automatiquement la première comme principale
       formData.append('alt_text', `Image du produit ${productId}`);
       
       console.log('FormData contents:', {
         image: imageFile.name,
         produit: productId,
-        principale: 'true',
+        principale: 'false',
         alt_text: `Image du produit ${productId}`
       });
       
@@ -486,50 +656,97 @@ class ApiService {
     try {
       console.log('Updating product with data:', updates);
       
-      // Préparer les données selon le format attendu par Django
-      const processedData = {
-        nom: updates.nom,
-        description_courte: updates.description_courte,
-        description_longue: updates.description_longue,
-        prix_achat: parseFloat(updates.prix_achat),
-        prix_vente: parseFloat(updates.prix_vente),
-        stock_minimum: parseInt(updates.stock_minimum),
-        stock_maximum: parseInt(updates.stock_maximum) || null,
-        sku: updates.sku,
-        code_barre: updates.code_barre || null,
-        categorie: updates.categorie,
-        marque: updates.marque,
-        unite_mesure: updates.unite_mesure,
-        tva_taux: parseFloat(updates.tva_taux) || 18.0,
-        statut: updates.statut || 'actif',
-        vendable: updates.vendable !== undefined ? updates.vendable : true,
-        achetable: updates.achetable !== undefined ? updates.achetable : true,
-        visible_catalogue: updates.visible_catalogue !== undefined ? updates.visible_catalogue : true,
-        dimensions: updates.dimensions || {},
-        couleurs_disponibles: updates.couleurs_disponibles || [],
-        tailles_disponibles: updates.tailles_disponibles || [],
-        point_recommande: updates.point_recommande || 10,
-        poids: updates.poids || null,
-        date_peremption: updates.date_peremption || null,
-        duree_conservation: updates.duree_conservation || null,
-        popularite_score: updates.popularite_score || 0,
-        nombre_vues: updates.nombre_vues || 0,
-        nombre_ventes: updates.nombre_ventes || 0,
-        en_promotion: updates.en_promotion || false,
-        stock_actuel: updates.stock_actuel || 0,
-        stock_disponible: updates.stock_disponible || 0,
-        en_rupture: updates.en_rupture || false,
-        stock_bas: updates.stock_bas || false,
-        images: updates.images || [],
-        variantes: updates.variantes || []
-      };
+      // Vérifier s'il y a des images à uploader
+      const hasImages = updates.images && updates.images.length > 0;
+      
+      if (hasImages) {
+        // Utiliser FormData pour supporter les images
+        const formData = new FormData();
+        
+        // Ajouter les champs de base
+        formData.append('nom', updates.nom);
+        formData.append('description_courte', updates.description_courte);
+        formData.append('description_longue', updates.description_longue);
+        formData.append('prix_achat', updates.prix_achat.toString());
+        formData.append('prix_vente', updates.prix_vente.toString());
+        formData.append('stock', (updates.stock || updates.stock_initial || 0).toString());
+        formData.append('sku', updates.sku);
+        if (updates.code_barre) {
+          formData.append('code_barre', updates.code_barre);
+        }
+        formData.append('categorie', updates.categorie);
+        formData.append('marque', updates.marque);
+        formData.append('unite_mesure', updates.unite_mesure || 'piece');
+        formData.append('tva_taux', (updates.tva_taux || 18.0).toString());
+        formData.append('statut', updates.statut || 'actif');
+        formData.append('vendable', (updates.vendable !== undefined ? updates.vendable : true).toString());
+        formData.append('achetable', (updates.achetable !== undefined ? updates.achetable : true).toString());
+        formData.append('visible_catalogue', (updates.visible_catalogue !== undefined ? updates.visible_catalogue : true).toString());
+        
+        // Ajouter les champs optionnels
+        if (updates.couleurs_disponibles && updates.couleurs_disponibles.length > 0) {
+          formData.append('couleurs_disponibles', JSON.stringify(updates.couleurs_disponibles));
+        }
+        if (updates.tailles_disponibles && updates.tailles_disponibles.length > 0) {
+          formData.append('tailles_disponibles', JSON.stringify(updates.tailles_disponibles));
+        }
+        if (updates.date_peremption) {
+          formData.append('date_peremption', updates.date_peremption);
+        }
+        if (updates.duree_conservation) {
+          formData.append('duree_conservation', updates.duree_conservation.toString());
+        }
+        
+        // Ajouter les images
+        updates.images.forEach((image: File) => {
+          formData.append('images', image);
+        });
+        
+        console.log(`✅ ${updates.images.length} image(s) ajoutée(s) au FormData pour la mise à jour`);
+        
+        return await this.request(`/products/products/${id}/`, {
+          method: 'PUT',
+          body: formData,
+          headers: {
+            // Ne pas définir Content-Type, laissez le navigateur le faire pour FormData
+          }
+        });
+      } else {
+        // Utiliser JSON pour les mises à jour sans images
+        const processedData = {
+          nom: updates.nom,
+          description_courte: updates.description_courte,
+          description_longue: updates.description_longue,
+          prix_achat: parseFloat(updates.prix_achat),
+          prix_vente: parseFloat(updates.prix_vente),
+          stock: parseInt(updates.stock || updates.stock_initial || 0),
+          sku: updates.sku,
+          code_barre: updates.code_barre || null,
+          categorie: updates.categorie,
+          marque: updates.marque,
+          unite_mesure: updates.unite_mesure || 'piece',
+          tva_taux: parseFloat(updates.tva_taux) || 18.0,
+          statut: updates.statut || 'actif',
+          vendable: updates.vendable !== undefined ? updates.vendable : true,
+          achetable: updates.achetable !== undefined ? updates.achetable : true,
+          visible_catalogue: updates.visible_catalogue !== undefined ? updates.visible_catalogue : true,
+          couleurs_disponibles: updates.couleurs_disponibles || [],
+          tailles_disponibles: updates.tailles_disponibles || [],
+          date_peremption: updates.date_peremption || null,
+          duree_conservation: updates.duree_conservation || null,
+          en_promotion: updates.en_promotion || false
+        };
 
-      console.log('Processed update data:', processedData);
+        console.log('Processed update data (JSON):', processedData);
 
-      return await this.request(`/products/products/${id}/`, {
-        method: 'PUT',
-        body: JSON.stringify(processedData),
-      });
+        return await this.request(`/products/products/${id}/`, {
+          method: 'PUT',
+          body: JSON.stringify(processedData),
+          headers: {
+            'Content-Type': 'application/json',
+          }
+        });
+      }
     } catch (error: any) {
       console.error('Erreur API updateProduct:', error);
       throw error;
@@ -570,6 +787,14 @@ class ApiService {
     });
   }
 
+  // Créer un Client (CRM) pour les ventes
+  async createClient(clientData: any) {
+    return this.request('/customers/clients/', {
+      method: 'POST',
+      body: JSON.stringify(clientData),
+    });
+  }
+
   async updateCustomer(id: string, updates: any) {
     return this.request(`/users/users/${id}/`, {
       method: 'PUT',
@@ -580,42 +805,6 @@ class ApiService {
   async deleteCustomer(id: string) {
     return this.request(`/users/users/${id}/`, {
       method: 'DELETE',
-    });
-  }
-
-  // Sales
-  async getSales(params: any = {}) {
-    const queryString = new URLSearchParams(params).toString();
-    return this.request(`/sales/ventes/?${queryString}`);
-  }
-
-  async getSale(id: string) {
-    return this.request(`/sales/ventes/${id}/`);
-  }
-
-  async createSale(saleData: any) {
-    return this.request('/sales/ventes/', {
-      method: 'POST',
-      body: JSON.stringify(saleData),
-    });
-  }
-
-  async confirmSale(id: string) {
-    return this.request(`/sales/ventes/${id}/confirm/`, {
-      method: 'POST',
-    });
-  }
-
-  async cancelSale(id: string, reason: string) {
-    return this.request(`/sales/ventes/${id}/cancel/`, {
-      method: 'POST',
-      body: JSON.stringify({ reason }),
-    });
-  }
-
-  async printInvoice(id: string) {
-    return this.request(`/sales/ventes/${id}/print_invoice/`, {
-      method: 'POST',
     });
   }
 
@@ -726,8 +915,20 @@ class ApiService {
 
   // Admin endpoints
   async getUsers(params: any = {}) {
-    const queryString = new URLSearchParams(params).toString();
-    return this.request(`/users/users/?${queryString}`);
+    try {
+      const queryString = new URLSearchParams(params).toString();
+      return await this.request(`/users/users/?${queryString}`);
+    } catch (error: any) {
+      // Si l'erreur est 401 ou 403, c'est probablement normal (utilisateur non-admin)
+      // Ne pas la logger comme une erreur critique
+      if (error?.response?.status === 401 || error?.response?.status === 403) {
+        console.log('ℹ️ Accès non autorisé pour getUsers (normal pour les non-admins)');
+        throw error; // Re-lancer l'erreur pour que le code appelant puisse la gérer
+      }
+      // Pour les autres erreurs, logger normalement
+      console.error('Erreur lors de la récupération des utilisateurs:', error);
+      throw error;
+    }
   }
 
   async getCompanies(params: any = {}) {
@@ -831,6 +1032,222 @@ class ApiService {
       return await this.syncData();
     } catch (error) {
       console.error('Erreur lors du forçage de synchronisation:', error);
+      throw error;
+    }
+  }
+
+  // === MÉTHODES POUR LES VENTES ===
+
+  // Créer une vente
+  async createSale(saleData: any) {
+    try {
+      const response = await this.request('/sales/ventes/', {
+        method: 'POST',
+        body: JSON.stringify(saleData),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      return response;
+    } catch (error: any) {
+      console.error('Erreur lors de la création de vente:', error);
+      throw error;
+    }
+  }
+
+  // Obtenir les ventes
+  async getSales(params: any = {}) {
+    try {
+      const queryString = new URLSearchParams(params).toString();
+      const url = `/sales/ventes/?${queryString}`;
+      
+      return await this.request(url);
+    } catch (error: any) {
+      console.error('Erreur lors de la récupération des ventes:', error);
+      throw error;
+    }
+  }
+
+  // Obtenir une vente par ID
+  async getSale(saleId: string) {
+    try {
+      return await this.request(`/sales/ventes/${saleId}/`);
+    } catch (error: any) {
+      console.error('Erreur lors de la récupération de la vente:', error);
+      throw error;
+    }
+  }
+
+  // Mettre à jour le statut d'une vente
+  async updateSaleStatus(saleId: string, status: string) {
+    try {
+      return await this.request(`/sales/ventes/${saleId}/`, {
+        method: 'PATCH',
+        body: JSON.stringify({ statut: status }),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+    } catch (error: any) {
+      console.error('Erreur lors de la mise à jour du statut:', error);
+      throw error;
+    }
+  }
+
+  // Confirmer une vente
+  async confirmSale(saleId: string) {
+    try {
+      return await this.request(`/sales/ventes/${saleId}/confirm/`, {
+        method: 'POST',
+      });
+    } catch (error: any) {
+      console.error('Erreur lors de la confirmation de la vente:', error);
+      throw error;
+    }
+  }
+
+  // Annuler une vente
+  async cancelSale(saleId: string, reason: string = '') {
+    try {
+      return await this.request(`/sales/ventes/${saleId}/cancel/`, {
+        method: 'POST',
+        body: JSON.stringify({ reason }),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+    } catch (error: any) {
+      console.error('Erreur lors de l\'annulation de la vente:', error);
+      throw error;
+    }
+  }
+
+  // Générer une facture PDF
+  async generateInvoicePDF(saleId: string) {
+    try {
+      // L'endpoint print_invoice retourne directement un PDF (HttpResponse)
+      // On doit utiliser fetch directement pour obtenir le blob
+      const response = await fetch(`${API_BASE_URL}/sales/ventes/${saleId}/print_invoice/`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.token || localStorage.getItem('token')}`,
+        },
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Erreur ${response.status}: ${errorText}`);
+      }
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      
+      return {
+        pdf_url: url,
+        blob: blob,
+      };
+    } catch (error: any) {
+      console.error('Erreur lors de la génération du PDF:', error);
+      throw error;
+    }
+  }
+
+  // Télécharger une facture PDF directement
+  async downloadInvoicePDF(saleId: string, filename?: string) {
+    try {
+      const response = await fetch(`${API_BASE_URL}/sales/ventes/${saleId}/print_invoice/`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.token || localStorage.getItem('token')}`,
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error('Erreur lors de la génération du PDF');
+      }
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename || `facture-${saleId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
+      return { success: true };
+    } catch (error: any) {
+      console.error('Erreur lors du téléchargement du PDF:', error);
+      throw error;
+    }
+  }
+
+  // Récupérer les commandes du client
+  async getClientOrders(params?: { status?: string; page_size?: number }) {
+    try {
+      const queryParams = new URLSearchParams();
+      if (params?.status && params.status !== 'all') {
+        queryParams.append('statut', params.status);
+      }
+      if (params?.page_size) {
+        queryParams.append('page_size', params.page_size.toString());
+      }
+      queryParams.append('ordering', '-date_creation');
+      
+      const endpoint = `/sales/ventes/${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
+      const response = await this.request(endpoint);
+      
+      // Gérer différents formats de réponse
+      if (Array.isArray(response)) {
+        return response;
+      } else if (response.results) {
+        return response.results;
+      } else if (response.data) {
+        return response.data;
+      }
+      
+      return [];
+    } catch (error: any) {
+      console.error('Erreur lors de la récupération des commandes:', error);
+      return [];
+    }
+  }
+
+  // === MÉTHODES POUR LA GESTION DES STOCKS ===
+
+  // Mettre à jour le stock d'un produit
+  async updateProductStock(productId: string, quantityChange: number) {
+    try {
+      console.log('Mise à jour du stock:', productId, quantityChange);
+      
+      // Utiliser directement PATCH pour mettre à jour uniquement le stock
+      // Cela évite d'appeler getProduct qui peut causer des erreurs 500
+      const currentStockResponse = await this.request(`/products/products/${productId}/`, {
+        method: 'GET',
+      });
+      
+      // Gérer différents formats de réponse
+      const currentStock = currentStockResponse.stock || 
+                          currentStockResponse.stock_actuel || 
+                          currentStockResponse.stock_disponible || 
+                          0;
+      
+      const newStock = Math.max(0, parseInt(String(currentStock)) + quantityChange);
+      
+      // Utiliser PATCH pour mettre à jour uniquement le stock
+      return await this.request(`/products/products/${productId}/`, {
+        method: 'PATCH',
+        body: JSON.stringify({ stock: newStock }),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+    } catch (error: any) {
+      console.error('Erreur lors de la mise à jour du stock:', error);
+      // Ne pas bloquer la vente si la mise à jour du stock échoue
+      console.warn('La vente a été créée mais le stock n\'a pas pu être mis à jour. Veuillez le mettre à jour manuellement.');
       throw error;
     }
   }

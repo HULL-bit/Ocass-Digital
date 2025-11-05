@@ -66,7 +66,7 @@ const UsersManagementPage: React.FC = () => {
         role: user.type_utilisateur,
         company: user.entreprise?.nom || null,
         phone: user.telephone,
-        avatar: getAvatarWithFallback(user.avatar, user.email),
+        avatar: getAvatarWithFallback(user.avatar, user.email, user.first_name),
         status: user.statut === 'actif' ? 'active' : 'suspended',
         lastLogin: user.date_derniere_connexion,
         joinDate: user.date_creation,

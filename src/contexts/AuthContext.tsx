@@ -93,26 +93,64 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const response = await apiService.login(email, password, role);
       
       if (response && response.user) {
+        // Récupérer l'entreprise si l'utilisateur est entrepreneur
+        let companyData = undefined;
+        if (response.user.type_utilisateur === 'entrepreneur') {
+          try {
+            // Essayer de récupérer l'entreprise depuis l'API
+            const userProfile = await apiService.request('/users/users/me/');
+            if (userProfile && userProfile.entreprise) {
+              companyData = {
+                id: userProfile.entreprise.id || userProfile.entreprise,
+                name: userProfile.entreprise.nom || response.user.entreprise_nom,
+                logo: userProfile.entreprise.logo,
+              };
+            } else if (response.user.entreprise_nom) {
+              // Fallback: utiliser seulement le nom si on ne peut pas récupérer l'objet complet
+              console.warn('⚠️ Entreprise nom seulement disponible, tentative de récupération complète...');
+              // Essayer de trouver l'entreprise par son nom
+              try {
+                const companies = await apiService.request('/companies/entreprises/');
+                const userCompany = companies.results?.find((c: any) => c.nom === response.user.entreprise_nom) ||
+                                   companies.find((c: any) => c.nom === response.user.entreprise_nom);
+                if (userCompany) {
+                  companyData = {
+                    id: userCompany.id,
+                    name: userCompany.nom,
+                    logo: userCompany.logo,
+                  };
+                }
+              } catch (err) {
+                console.warn('Impossible de récupérer l\'entreprise complète:', err);
+              }
+            }
+          } catch (error) {
+            console.warn('Erreur lors de la récupération de l\'entreprise:', error);
+          }
+        }
+        
         const userData = {
           id: response.user.id,
           email: response.user.email,
           firstName: response.user.first_name || response.user.nom_complet?.split(' ')[0] || '',
           lastName: response.user.last_name || response.user.nom_complet?.split(' ').slice(1).join(' ') || '',
           role: response.user.type_utilisateur,
-          avatar: getAvatarWithFallback(response.user.avatar, response.user.email),
-          company: response.user.entreprise ? {
-            id: response.user.entreprise.id,
-            name: response.user.entreprise.nom,
-            logo: response.user.entreprise.logo,
-          } : undefined,
+          avatar: getAvatarWithFallback(response.user.avatar, response.user.email, response.user.first_name),
+          company: companyData,
           permissions: response.permissions || [],
           preferences: {
             language: response.user.langue || 'fr',
-            currency: response.user.entreprise?.devise_principale || 'XOF',
+            currency: companyData?.devise_principale || 'XOF',
             theme: response.user.theme_interface || 'light',
             notifications: response.user.notifications_email !== undefined ? response.user.notifications_email : true,
           },
         };
+        
+        console.log('✅ Utilisateur connecté avec entreprise:', {
+          email: userData.email,
+          role: userData.role,
+          entreprise: userData.company
+        });
         
         setUser(userData);
         localStorage.setItem('user', JSON.stringify(userData));
@@ -165,7 +203,22 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
+  
+  // En mode développement, permettre un contexte undefined temporaire (HMR)
   if (context === undefined) {
+    // Retourner un contexte par défaut au lieu de lever une erreur
+    // pour éviter les crashes lors du Hot Module Replacement
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('⚠️ useAuth called outside AuthProvider - returning default context (dev mode)');
+      return {
+        user: null,
+        loading: true,
+        login: async () => false,
+        logout: () => {},
+        updateUser: () => {},
+      };
+    }
+    // En production, lever l'erreur
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;

@@ -26,6 +26,7 @@ interface ProductWithDetails {
   sku?: string;
   category_id?: number;
   company_id?: number;
+  company_name?: string;
   created_at?: string;
 }
 
@@ -53,26 +54,23 @@ const CompanyProductsPage: React.FC<CompanyProductsProps> = () => {
 
   useEffect(() => {
     console.log('CompanyProductsPage mounted with companyId:', companyId);
-    if (companyId) {
-      loadCompanyData();
-      loadProducts();
-      loadCategories();
-    } else {
-      console.error('No companyId provided to CompanyProductsPage');
-      setError('Aucun ID d\'entreprise fourni');
-      setLoading(false);
-    }
+    // Charger les produits même si companyId n'est pas fourni (pour afficher tous les produits)
+    loadCompanyData();
+    loadProducts();
+    loadCategories();
   }, [companyId]);
 
   const loadCompanyData = async () => {
     try {
-      const response = await apiService.getCompanies();
-      const companies = response.results || response;
-      const foundCompany = companies.find((c: any) => c.id === companyId);
-      if (foundCompany) {
-        setCompany(foundCompany);
-      } else {
-        console.warn('Entreprise non trouvée avec l\'ID:', companyId);
+      if (companyId) {
+        const response = await apiService.getCompanies();
+        const companies = response.results || response;
+        const foundCompany = companies.find((c: any) => c.id === companyId);
+        if (foundCompany) {
+          setCompany(foundCompany);
+        } else {
+          console.warn('Entreprise non trouvée avec l\'ID:', companyId);
+        }
       }
     } catch (error) {
       console.error('Erreur lors du chargement des données de l\'entreprise:', error);
@@ -88,31 +86,59 @@ const CompanyProductsPage: React.FC<CompanyProductsProps> = () => {
       
       console.log('loadProducts - allProducts type:', typeof allProducts);
       console.log('loadProducts - allProducts is array:', Array.isArray(allProducts));
-      console.log('loadProducts - allProducts:', allProducts);
       
-      // Vérifier que allProducts est bien un tableau
-      if (!Array.isArray(allProducts)) {
-        console.error('allProducts is not an array:', allProducts);
+      // Gérer différents formats de réponse
+      let productsData = [];
+      if (Array.isArray(allProducts)) {
+        productsData = allProducts;
+      } else if (allProducts && Array.isArray(allProducts.results)) {
+        productsData = allProducts.results;
+      } else if (allProducts && Array.isArray(allProducts.data)) {
+        productsData = allProducts.data;
+      } else {
+        console.error('allProducts format non reconnu:', allProducts);
         setError('Erreur: Les données reçues ne sont pas dans le format attendu');
         setProducts([]);
         return;
       }
       
-      // Filtrer les produits par entreprise (companyId est un UUID)
-      console.log('Filtering products for companyId:', companyId);
-      console.log('Sample product structure:', allProducts[0]);
+      console.log('Total produits récupérés:', productsData.length);
       
-      const companyProducts = allProducts.filter((p: any) => {
-        console.log(`Product ${p.nom} - entreprise: ${p.entreprise}, companyId: ${companyId}`);
-        // Vérifier si p.entreprise est un objet avec un id ou directement l'id
-        const productCompanyId = typeof p.entreprise === 'object' ? p.entreprise?.id : p.entreprise;
-        console.log(`Product ${p.nom} - productCompanyId: ${productCompanyId}, companyId: ${companyId}`);
-        return productCompanyId === companyId || productCompanyId === (companyId ? parseInt(companyId) : null) || productCompanyId === companyId?.toString();
-      });
+      // Si companyId est fourni, filtrer par entreprise, sinon afficher tous les produits
+      let filteredProducts = productsData;
+      if (companyId) {
+        console.log('Filtering products for companyId:', companyId);
+        filteredProducts = productsData.filter((p: any) => {
+          // Vérifier si p.entreprise est un objet avec un id ou directement l'id
+          const productCompanyId = p.entreprise?.id || p.entreprise || p.company_id;
+          const companyIdStr = companyId.toString();
+          const productCompanyIdStr = productCompanyId?.toString();
+          
+          return productCompanyIdStr === companyIdStr || 
+                 productCompanyId === companyId ||
+                 productCompanyId === parseInt(companyId);
+        });
+        console.log('Filtered products count:', filteredProducts.length);
+      } else {
+        console.log('Aucun companyId, affichage de tous les produits:', filteredProducts.length);
+      }
       
-      console.log('Filtered products count:', companyProducts.length);
+      // Transformer les produits pour correspondre au format attendu
+      const transformedProducts = filteredProducts.map((p: any) => ({
+        id: p.id,
+        name: p.nom || p.name,
+        description: p.description_courte || p.description || '',
+        price: parseFloat(p.prix_vente) || 0,
+        stock: parseInt(p.stock) || parseInt(p.stock_actuel) || parseInt(p.stock_disponible) || 0,
+        image: p.images?.[0]?.image_url || p.images?.[0]?.image || p.image || '',
+        sku: p.sku || '',
+        category_id: p.categorie?.id || p.categorie_id,
+        company_id: typeof p.entreprise === 'object' ? p.entreprise?.id : p.entreprise,
+        company_name: typeof p.entreprise === 'object' ? p.entreprise?.nom : undefined,
+        created_at: p.date_creation || p.created_at
+      }));
       
-      setProducts(companyProducts);
+      setProducts(transformedProducts);
       setError(null);
     } catch (error) {
       console.error('Erreur lors du chargement des produits:', error);
@@ -240,9 +266,16 @@ const CompanyProductsPage: React.FC<CompanyProductsProps> = () => {
       header: 'Catégorie',
       cell: (product: ProductWithDetails) => {
         const category = categories.find(c => c.id === product.category_id);
-        return <span className="text-gray-600">{category?.name || 'Non définie'}</span>;
+        return <span className="text-gray-600">{category?.name || category?.nom || 'Non définie'}</span>;
       }
     },
+    ...(companyId ? [] : [{
+      id: 'company',
+      header: 'Entreprise',
+      cell: (product: ProductWithDetails) => (
+        <span className="text-gray-600">{product.company_name || 'Non définie'}</span>
+      )
+    }]),
     {
       id: 'price',
       header: 'Prix',
@@ -352,10 +385,10 @@ const CompanyProductsPage: React.FC<CompanyProductsProps> = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
-            Produits de {company?.name || 'l\'entreprise'}
+            {company ? `Produits de ${company.name || company.nom}` : 'Tous les produits (toutes les entreprises)'}
           </h1>
           <p className="text-gray-600">
-            Gestion des produits de l'entreprise
+            {company ? 'Gestion des produits de l\'entreprise' : 'Gestion de tous les produits de toutes les entreprises'}
           </p>
         </div>
         <Button onClick={loadProducts}>

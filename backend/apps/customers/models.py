@@ -17,7 +17,7 @@ class Client(BaseModel):
     ]
     
     # Identification
-    code_client = models.CharField(max_length=20, unique=True, verbose_name=_("Code client"))
+    code_client = models.CharField(max_length=20, unique=True, blank=True, verbose_name=_("Code client"))
     type_client = models.CharField(
         max_length=20,
         choices=TYPE_CLIENT_CHOICES,
@@ -152,6 +152,19 @@ class Client(BaseModel):
         if self.prenom:
             return f"{self.prenom} {self.nom}"
         return self.nom
+    
+    def save(self, *args, **kwargs):
+        """Générer automatiquement le code_client s'il n'est pas fourni."""
+        if not self.code_client:
+            import uuid
+            # Générer un code unique basé sur l'UUID
+            code_base = str(uuid.uuid4())[:8].upper()
+            self.code_client = f"CLI-{code_base}"
+            # Vérifier l'unicité et régénérer si nécessaire
+            while Client.objects.filter(code_client=self.code_client).exists():
+                code_base = str(uuid.uuid4())[:8].upper()
+                self.code_client = f"CLI-{code_base}"
+        super().save(*args, **kwargs)
     
     def calculer_panier_moyen(self):
         """Calcule le panier moyen du client."""

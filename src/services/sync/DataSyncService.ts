@@ -151,7 +151,7 @@ class DataSyncService {
       // Synchroniser les entreprises
       const companies = await this.syncCompanies();
       
-      // Synchroniser les utilisateurs (seulement si l'utilisateur est authentifié)
+      // Synchroniser les utilisateurs (seulement si l'utilisateur est admin)
       const users = await this.syncUsers();
 
       // Synchroniser le panier avec les données du catalogue
@@ -257,9 +257,36 @@ class DataSyncService {
 
   private async syncUsers(): Promise<any[]> {
     try {
+      // Vérifier si l'utilisateur est admin avant de synchroniser les utilisateurs
+      const userData = localStorage.getItem('user');
+      if (!userData) {
+        console.log('ℹ️ Aucun utilisateur connecté, skip synchronisation utilisateurs');
+        return [];
+      }
+      
+      let user;
+      try {
+        user = JSON.parse(userData);
+      } catch (e) {
+        console.log('ℹ️ Impossible de parser les données utilisateur, skip synchronisation utilisateurs');
+        return [];
+      }
+      
+      // Seuls les admins peuvent voir tous les utilisateurs
+      if (user.type_utilisateur !== 'admin') {
+        console.log('ℹ️ Utilisateur non-admin, skip synchronisation utilisateurs');
+        return [];
+      }
+      
       const users = await apiService.getUsers();
-      return users;
-    } catch (error) {
+      return Array.isArray(users) ? users : (users.results || users.data || []);
+    } catch (error: any) {
+      // Ne pas logger les erreurs 401/403 comme des erreurs critiques
+      if (error?.response?.status === 401 || error?.response?.status === 403) {
+        console.log('ℹ️ Accès non autorisé pour la synchronisation des utilisateurs (normal pour les non-admins)');
+        return [];
+      }
+      
       console.error('Erreur lors de la synchronisation des utilisateurs:', error);
       // Si c'est une erreur d'authentification, arrêter la synchronisation
       if (error instanceof Error && error.message.includes('Session expirée')) {

@@ -2,42 +2,39 @@
  * Utilitaires pour générer des logos d'entreprises uniques
  */
 
-// Collection d'images de logos d'entreprises variées
+// Collection d'images de logos d'entreprises locales africaines
 const COMPANY_LOGOS = [
   // Logos d'entreprises tech
-  'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=100&h=100&fit=crop&crop=center',
-  'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?w=100&h=100&fit=crop&crop=center',
-  'https://images.unsplash.com/photo-1593642702821-c8a6771f0686?w=100&h=100&fit=crop&crop=center',
+  '/Res/iwaria-inc-tvTFMDwH-cQ-unsplash.jpg',
+  '/Res/tech.jpg',
+  '/Res/entrepreneur.png',
+  '/Res/ent2.png',
   
   // Logos d'entreprises de mode/beauté
-  'https://images.unsplash.com/photo-1512941937669-90a1b58e7e9c?w=100&h=100&fit=crop&crop=center',
-  'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=100&h=100&fit=crop&crop=center',
-  'https://images.unsplash.com/photo-1469334031218-e382a71b716b?w=100&h=100&fit=crop&crop=center',
+  '/Res/boutque.jpg',
+  '/Res/boutiqueMarie%20Diallo.jpg',
+  '/Res/couture.jpg',
+  '/Res/pexels-planeteelevene-2290243.jpg',
   
   // Logos d'entreprises de santé
-  'https://images.unsplash.com/photo-1475178626620-a4d074967452?w=100&h=100&fit=crop&crop=center',
-  'https://images.unsplash.com/photo-1445205170230-053b83016050?w=100&h=100&fit=crop&crop=center',
-  'https://images.unsplash.com/photo-1565299624946-b28f40a0ca4b?w=100&h=100&fit=crop&crop=center',
+  '/Res/SuperMarche.jpg',
+  '/Res/pexels-shattha-pilabut-38930-135620.jpg',
+  '/Res/rutendo-petros-Tzp_yd6W8LM-unsplash.jpg',
   
   // Logos d'entreprises alimentaires
-  'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=100&h=100&fit=crop&crop=center',
-  'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=100&h=100&fit=crop&crop=center',
-  'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=100&h=100&fit=crop&crop=center',
+  '/Res/boutique.jpg',
+  '/Res/monody-le-mZ_7CuqsRV0-unsplash.jpg',
+  '/Res/pexels-cenali-2733918.jpg',
   
   // Logos d'entreprises de maison/déco
-  'https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=100&h=100&fit=crop&crop=center',
-  'https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=100&h=100&fit=crop&crop=center',
-  'https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=100&h=100&fit=crop&crop=center',
+  '/Res/pexels-bohlemedia-1884581.jpg',
+  '/Res/stefan-buhler-qQY44BbC2mw-unsplash.jpg',
+  '/Res/shivansh-sharma-l2cFxUEEY7I-unsplash.jpg',
   
-  // Logos d'entreprises sport
-  'https://images.unsplash.com/photo-1551698618-1dfe5d97d256?w=100&h=100&fit=crop&crop=center',
-  'https://images.unsplash.com/photo-1551698618-1dfe5d97d256?w=100&h=100&fit=crop&crop=center',
-  'https://images.unsplash.com/photo-1551698618-1dfe5d97d256?w=100&h=100&fit=crop&crop=center',
-  
-  // Logos d'entreprises électroniques
-  'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=100&h=100&fit=crop&crop=center',
-  'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=100&h=100&fit=crop&crop=center',
-  'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=100&h=100&fit=crop&crop=center'
+  // Logos d'entreprises diverses
+  '/Res/gerent.jpg',
+  '/Res/mathieu-gauzy-qLT3rBVwiLY-unsplash.jpg',
+  '/Res/tr-n-thanh-h-i-g7pcs7FYx0Y-unsplash.jpg'
 ];
 
 /**
@@ -73,17 +70,20 @@ export const getCompanyLogo = (companyId: string | number): string => {
  */
 export const getCompanyLogoBySector = (sector: string): string => {
   const sectorLogos: Record<string, string> = {
-    'commerce_electronique': 'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=100&h=100&fit=crop&crop=center',
-    'commerce_textile': 'https://images.unsplash.com/photo-1512941937669-90a1b58e7e9c?w=100&h=100&fit=crop&crop=center',
-    'commerce_pharmaceutique': 'https://images.unsplash.com/photo-1475178626620-a4d074967452?w=100&h=100&fit=crop&crop=center',
-    'commerce_alimentaire': 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=100&h=100&fit=crop&crop=center',
-    'commerce_maison': 'https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=100&h=100&fit=crop&crop=center',
-    'commerce_sport': 'https://images.unsplash.com/photo-1551698618-1dfe5d97d256?w=100&h=100&fit=crop&crop=center',
-    'commerce_sante': 'https://images.unsplash.com/photo-1445205170230-053b83016050?w=100&h=100&fit=crop&crop=center',
-    'commerce_livre': 'https://images.unsplash.com/photo-1481627834876-b7833e8f5570?w=100&h=100&fit=crop&crop=center',
-    'commerce_jouets': 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=100&h=100&fit=crop&crop=center',
-    'commerce_automobile': 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=100&h=100&fit=crop&crop=center',
-    'commerce_general': 'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=100&h=100&fit=crop&crop=center'
+    'commerce_electronique': '/Res/iwaria-inc-tvTFMDwH-cQ-unsplash.jpg',
+    'technologie': '/Res/tech.jpg',
+    'commerce_textile': '/Res/boutque.jpg',
+    'commerce_de_detail': '/Res/boutiqueMarie%20Diallo.jpg',
+    'commerce_pharmaceutique': '/Res/SuperMarche.jpg',
+    'sante': '/Res/SuperMarche.jpg',
+    'commerce_alimentaire': '/Res/boutique.jpg',
+    'commerce_maison': '/Res/pexels-bohlemedia-1884581.jpg',
+    'commerce_sport': '/Res/stefan-buhler-qQY44BbC2mw-unsplash.jpg',
+    'commerce_sante': '/Res/SuperMarche.jpg',
+    'commerce_livre': '/Res/shivansh-sharma-l2cFxUEEY7I-unsplash.jpg',
+    'commerce_jouets': '/Res/mathieu-gauzy-qLT3rBVwiLY-unsplash.jpg',
+    'commerce_automobile': '/Res/gerent.jpg',
+    'commerce_general': '/Res/boutique.jpg'
   };
   
   return sectorLogos[sector] || COMPANY_LOGOS[0];

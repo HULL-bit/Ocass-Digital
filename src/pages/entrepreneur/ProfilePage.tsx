@@ -203,7 +203,7 @@ const ProfilePage: React.FC = () => {
             <div className="text-center">
               <div className="relative inline-block mb-4">
                 <img
-                  src={getAvatarWithFallback(user?.avatar, user?.email || '')}
+                  src={getAvatarWithFallback(user?.avatar, user?.email || '', user?.firstName)}
                   alt={user?.firstName}
                   className="w-24 h-24 rounded-full object-cover border-4 border-primary-500"
                 />

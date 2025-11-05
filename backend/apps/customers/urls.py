@@ -6,7 +6,7 @@ from rest_framework.routers import DefaultRouter
 from . import views
 
 router = DefaultRouter()
-# Ajouter les ViewSets quand ils seront créés
+router.register(r'clients', views.ClientViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

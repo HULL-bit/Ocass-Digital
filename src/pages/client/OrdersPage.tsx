@@ -19,7 +19,9 @@ import {
   Calendar,
   CreditCard,
   RotateCcw,
-  X
+  X,
+  Printer,
+  FileText
 } from 'lucide-react';
 import Button from '../../components/ui/Button';
 
@@ -38,116 +40,83 @@ const OrdersPage: React.FC = () => {
   const loadOrders = async () => {
     try {
       setLoading(true);
-      // Pour l'instant, on utilise les données mockées
-      // TODO: Implémenter l'API des commandes quand elle sera disponible
-      const mockOrders = [
-    {
-      id: 'CMD-001',
-      date: '2024-01-15T10:30:00Z',
-      status: 'delivered',
-      total: 850000,
-      items: [
-        {
-          id: '1',
-          name: 'iPhone 15 Pro',
-          quantity: 1,
-          price: 850000,
-          image: 'https://images.pexels.com/photos/788946/pexels-photo-788946.jpeg?auto=compress&cs=tinysrgb&w=100&h=100&dpr=2',
-        },
-      ],
-      seller: {
-        name: 'TechSolutions Sénégal',
-        logo: 'https://images.pexels.com/photos/3184291/pexels-photo-3184291.jpeg?auto=compress&cs=tinysrgb&w=50&h=50&dpr=2',
-      },
-      shipping: {
-        method: 'Livraison Express',
-        address: '25 Rue de la Paix, Médina, Dakar',
-        trackingNumber: 'TRK123456789',
-        estimatedDelivery: '2024-01-16T18:00:00Z',
-        actualDelivery: '2024-01-16T15:30:00Z',
-      },
-      payment: {
-        method: 'Wave Money',
-        reference: 'WV789123456',
-        status: 'paid',
-      },
-      canReview: true,
-      canReturn: true,
-      returnDeadline: '2024-02-15T23:59:59Z',
-    },
-    {
-      id: 'CMD-002',
-      date: '2024-01-12T14:20:00Z',
-      status: 'shipped',
-      total: 180000,
-      items: [
-        {
-          id: '2',
-          name: 'Robe Élégante Africaine',
-          quantity: 2,
-          price: 70000,
-          image: 'https://images.pexels.com/photos/1536619/pexels-photo-1536619.jpeg?auto=compress&cs=tinysrgb&w=100&h=100&dpr=2',
-        },
-        {
-          id: '3',
-          name: 'Savon Noir Africain',
-          quantity: 4,
-          price: 10000,
-          image: 'https://images.pexels.com/photos/4465124/pexels-photo-4465124.jpeg?auto=compress&cs=tinysrgb&w=100&h=100&dpr=2',
-        },
-      ],
-      seller: {
-        name: 'Boutique Marie Diallo',
-        logo: 'https://images.pexels.com/photos/4386476/pexels-photo-4386476.jpeg?auto=compress&cs=tinysrgb&w=50&h=50&dpr=2',
-      },
-      shipping: {
-        method: 'Livraison Standard',
-        address: '25 Rue de la Paix, Médina, Dakar',
-        trackingNumber: 'TRK987654321',
-        estimatedDelivery: '2024-01-17T18:00:00Z',
-      },
-      payment: {
-        method: 'Orange Money',
-        reference: 'OM456789123',
-        status: 'paid',
-      },
-      canReview: false,
-      canReturn: false,
-    },
-    {
-      id: 'CMD-003',
-      date: '2024-01-10T09:15:00Z',
-      status: 'processing',
-      total: 145000,
-      items: [
-        {
-          id: '4',
-          name: 'Air Jordan 1 Retro',
-          quantity: 1,
-          price: 145000,
-          image: 'https://images.pexels.com/photos/2529148/pexels-photo-2529148.jpeg?auto=compress&cs=tinysrgb&w=100&h=100&dpr=2',
-        },
-      ],
-      seller: {
-        name: 'Boutique Marie Diallo',
-        logo: 'https://images.pexels.com/photos/4386476/pexels-photo-4386476.jpeg?auto=compress&cs=tinysrgb&w=50&h=50&dpr=2',
-      },
-      shipping: {
-        method: 'Livraison Express',
-        address: '25 Rue de la Paix, Médina, Dakar',
-        estimatedDelivery: '2024-01-18T18:00:00Z',
-      },
-      payment: {
-        method: 'Carte Bancaire',
-        reference: 'CB123789456',
-        status: 'paid',
-      },
-      canReview: false,
-      canReturn: false,
-    },
-  ];
       
-      setOrders(mockOrders);
+      // Charger les commandes depuis l'API
+      const ordersData = await apiService.getClientOrders({ page_size: 100 });
+      
+      // Transformer les données de l'API en format utilisable
+      const transformedOrders = ordersData.map((order: any) => {
+        // Mapper les statuts
+        const statusMap: Record<string, string> = {
+          'en_attente': 'processing',
+          'confirmee': 'processing',
+          'expediee': 'shipped',
+          'livree': 'delivered',
+          'terminee': 'delivered',
+          'annulee': 'cancelled'
+        };
+        
+        const mappedStatus = statusMap[order.statut] || order.statut || 'processing';
+        
+        // Transformer les lignes de vente en items
+        const items = (order.lignes || []).map((ligne: any) => {
+          // Récupérer l'image du produit
+          let imageUrl = 'https://images.unsplash.com/photo-1557683316-973673baf926?q=80&w=200&auto=format&fit=crop';
+          if (ligne.produit?.images && ligne.produit.images.length > 0) {
+            const firstImage = ligne.produit.images[0];
+            imageUrl = firstImage.image_url || firstImage.image || imageUrl;
+          } else if (ligne.produit?.image) {
+            imageUrl = ligne.produit.image;
+          }
+          
+          return {
+            id: ligne.id || ligne.produit?.id,
+            name: ligne.produit?.nom || 'Produit',
+            quantity: ligne.quantite || 1,
+            price: parseFloat(ligne.total_ttc || ligne.prix_unitaire || 0),
+            image: imageUrl
+          };
+        });
+        
+        // Récupérer le logo de l'entreprise
+        let sellerLogo = 'https://images.unsplash.com/photo-1560250097-0b93528c311a?q=80&w=100&auto=format&fit=crop';
+        if (order.entrepreneur_nom) {
+          // Utiliser le logo de l'entreprise si disponible
+          sellerLogo = sellerLogo;
+        }
+        
+        return {
+          id: order.id || order.numero_commande || order.numero_facture,
+          numero_facture: order.numero_facture,
+          date: order.date_creation,
+          status: mappedStatus,
+          total: parseFloat(order.total_ttc || 0),
+          items: items,
+          seller: {
+            name: order.entrepreneur_nom || 'Entreprise',
+            logo: sellerLogo
+          },
+          shipping: {
+            method: order.transporteur || 'Livraison Standard',
+            address: order.adresse_livraison || 'Adresse non spécifiée',
+            trackingNumber: order.numero_suivi,
+            estimatedDelivery: order.date_livraison_prevue,
+            actualDelivery: order.date_livraison_reelle
+          },
+          payment: {
+            method: order.mode_paiement || 'Non spécifié',
+            reference: order.reference_paiement || '',
+            status: order.statut_paiement === 'paid' ? 'paid' : 'pending'
+          },
+          canReview: mappedStatus === 'delivered',
+          canReturn: mappedStatus === 'delivered' && new Date(order.date_livraison_reelle || order.date_creation) > new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+          returnDeadline: order.date_livraison_reelle ? new Date(new Date(order.date_livraison_reelle).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString() : undefined,
+          // Données brutes pour les détails
+          rawData: order
+        };
+      });
+      
+      setOrders(transformedOrders);
     } catch (error) {
       console.error('Erreur lors du chargement des commandes:', error);
       setOrders([]);
@@ -155,14 +124,117 @@ const OrdersPage: React.FC = () => {
       setLoading(false);
     }
   };
+  
+  // Télécharger une facture en PDF
+  const handleDownloadInvoice = async (order: any) => {
+    try {
+      if (order.rawData?.id) {
+        await apiService.downloadInvoicePDF(order.rawData.id, `facture-${order.numero_facture || order.id}.pdf`);
+      } else {
+        alert('Impossible de télécharger la facture : ID de commande manquant');
+      }
+    } catch (error: any) {
+      console.error('Erreur lors du téléchargement:', error);
+      alert('Erreur lors du téléchargement de la facture');
+    }
+  };
+  
+  // Imprimer une facture
+  const handlePrintInvoice = async (order: any) => {
+    try {
+      if (order.rawData?.id) {
+        const response = await apiService.generateInvoicePDF(order.rawData.id);
+        if (response.pdf_url) {
+          window.open(response.pdf_url, '_blank');
+        } else {
+          // Fallback: ouvrir dans un nouvel onglet pour impression
+          const printWindow = window.open('', '_blank');
+          if (printWindow) {
+            printWindow.document.write(`
+              <html>
+                <head>
+                  <title>Facture ${order.numero_facture || order.id}</title>
+                  <style>
+                    body { font-family: Arial, sans-serif; padding: 20px; }
+                    .header { text-align: center; margin-bottom: 30px; }
+                    .info { margin-bottom: 20px; }
+                    table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+                    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                    th { background-color: #f2f2f2; }
+                    .total { text-align: right; font-weight: bold; margin-top: 20px; }
+                  </style>
+                </head>
+                <body>
+                  <div class="header">
+                    <h1>FACTURE</h1>
+                    <p>${order.numero_facture || order.id}</p>
+                  </div>
+                  <div class="info">
+                    <p><strong>Date:</strong> ${new Date(order.date).toLocaleDateString('fr-FR')}</p>
+                    <p><strong>Vendeur:</strong> ${order.seller.name}</p>
+                    <p><strong>Adresse:</strong> ${order.shipping.address}</p>
+                  </div>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Produit</th>
+                        <th>Quantité</th>
+                        <th>Prix Unitaire</th>
+                        <th>Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${order.items.map((item: any) => `
+                        <tr>
+                          <td>${item.name}</td>
+                          <td>${item.quantity}</td>
+                          <td>${(item.price / item.quantity).toLocaleString()} XOF</td>
+                          <td>${item.price.toLocaleString()} XOF</td>
+                        </tr>
+                      `).join('')}
+                    </tbody>
+                  </table>
+                  <div class="total">
+                    <p>Total: ${order.total.toLocaleString()} XOF</p>
+                  </div>
+                </body>
+              </html>
+            `);
+            printWindow.document.close();
+            printWindow.print();
+          }
+        }
+      } else {
+        alert('Impossible d\'imprimer la facture : ID de commande manquant');
+      }
+    } catch (error: any) {
+      console.error('Erreur lors de l\'impression:', error);
+      alert('Erreur lors de l\'impression de la facture');
+    }
+  };
 
   const orderStatuses = [
     { id: 'all', label: 'Toutes', count: orders.length },
-    { id: 'processing', label: 'En préparation', count: 1 },
-    { id: 'shipped', label: 'Expédiées', count: 1 },
-    { id: 'delivered', label: 'Livrées', count: 1 },
-    { id: 'cancelled', label: 'Annulées', count: 0 },
+    { id: 'processing', label: 'En préparation', count: orders.filter(o => o.status === 'processing').length },
+    { id: 'shipped', label: 'Expédiées', count: orders.filter(o => o.status === 'shipped').length },
+    { id: 'delivered', label: 'Livrées', count: orders.filter(o => o.status === 'delivered').length },
+    { id: 'cancelled', label: 'Annulées', count: orders.filter(o => o.status === 'cancelled').length },
   ];
+  
+  // Filtrer les commandes selon l'onglet sélectionné
+  const filteredOrders = orders.filter(order => {
+    if (selectedTab === 'all') return true;
+    return order.status === selectedTab;
+  }).filter(order => {
+    if (!searchTerm) return true;
+    const search = searchTerm.toLowerCase();
+    return (
+      order.id?.toLowerCase().includes(search) ||
+      order.numero_facture?.toLowerCase().includes(search) ||
+      order.items.some((item: any) => item.name.toLowerCase().includes(search)) ||
+      order.seller.name.toLowerCase().includes(search)
+    );
+  });
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -221,11 +293,12 @@ const OrdersPage: React.FC = () => {
         </div>
         
         <div className="flex items-center space-x-3">
-          <Button variant="secondary" icon={<RefreshCw className="w-4 h-4" />}>
+          <Button 
+            variant="secondary" 
+            icon={<RefreshCw className="w-4 h-4" />}
+            onClick={loadOrders}
+          >
             Actualiser
-          </Button>
-          <Button variant="secondary" icon={<Download className="w-4 h-4" />}>
-            Exporter
           </Button>
         </div>
       </div>
@@ -271,9 +344,27 @@ const OrdersPage: React.FC = () => {
 
         {/* Orders List */}
         <div className="p-6">
-          <div className="space-y-4">
-            <AnimatePresence>
-              {orders.map((order, index) => (
+          {loading ? (
+            <div className="text-center py-12">
+              <RefreshCw className="w-8 h-8 animate-spin text-primary-500 mx-auto mb-4" />
+              <p className="text-gray-600 dark:text-gray-400">Chargement des commandes...</p>
+            </div>
+          ) : filteredOrders.length === 0 ? (
+            <div className="text-center py-12">
+              <Package className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+              <h3 className="text-lg font-semibold text-gray-600 dark:text-gray-300 mb-2">
+                Aucune commande trouvée
+              </h3>
+              <p className="text-gray-500">
+                {searchTerm || selectedTab !== 'all'
+                  ? 'Aucune commande ne correspond à vos critères.'
+                  : 'Vous n\'avez pas encore passé de commande.'}
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <AnimatePresence>
+                {filteredOrders.map((order, index) => (
                 <motion.div
                   key={order.id}
                   layout
@@ -368,6 +459,26 @@ const OrdersPage: React.FC = () => {
                       </div>
                       
                       <div className="flex items-center space-x-2">
+                        <button 
+                          className="btn-secondary text-sm px-3 py-1.5 inline-flex items-center gap-2"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handlePrintInvoice(order);
+                          }}
+                        >
+                          <Printer className="w-3 h-3" />
+                          Imprimer
+                        </button>
+                        <button 
+                          className="btn-secondary text-sm px-3 py-1.5 inline-flex items-center gap-2"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDownloadInvoice(order);
+                          }}
+                        >
+                          <Download className="w-3 h-3" />
+                          PDF
+                        </button>
                         {order.status === 'delivered' && order.canReview && (
                           <Button variant="secondary" size="sm" icon={<Star className="w-3 h-3" />}>
                             Noter
@@ -380,9 +491,10 @@ const OrdersPage: React.FC = () => {
                     </div>
                   </div>
                 </motion.div>
-              ))}
-            </AnimatePresence>
-          </div>
+                ))}
+              </AnimatePresence>
+            </div>
+          )}
         </div>
       </div>
 
@@ -436,29 +548,37 @@ const OrdersPage: React.FC = () => {
                     <div>
                       <h3 className="font-semibold text-gray-900 dark:text-white mb-4">Articles Commandés</h3>
                       <div className="space-y-3">
-                        {selectedOrder.items.map((item: any) => (
-                          <div key={item.id} className="flex items-center space-x-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-xl">
-                            <img
-                              src={item.image}
-                              alt={item.name}
-                              className="w-16 h-16 rounded-lg object-cover"
-                            />
-                            <div className="flex-1">
-                              <h4 className="font-medium text-gray-900 dark:text-white">{item.name}</h4>
-                              <p className="text-sm text-gray-600 dark:text-gray-300">
-                                Quantité: {item.quantity}
-                              </p>
+                        {selectedOrder.items && selectedOrder.items.length > 0 ? (
+                          selectedOrder.items.map((item: any) => (
+                            <div key={item.id} className="flex items-center space-x-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-xl">
+                              <img
+                                src={item.image}
+                                alt={item.name}
+                                className="w-16 h-16 rounded-lg object-cover"
+                                onError={(e) => {
+                                  const target = e.currentTarget as HTMLImageElement;
+                                  target.src = 'https://images.unsplash.com/photo-1557683316-973673baf926?q=80&w=200&auto=format&fit=crop';
+                                }}
+                              />
+                              <div className="flex-1">
+                                <h4 className="font-medium text-gray-900 dark:text-white">{item.name}</h4>
+                                <p className="text-sm text-gray-600 dark:text-gray-300">
+                                  Quantité: {item.quantity}
+                                </p>
+                              </div>
+                              <div className="text-right">
+                                <p className="font-semibold text-gray-900 dark:text-white">
+                                  {item.price.toLocaleString()} XOF
+                                </p>
+                                <p className="text-sm text-gray-500">
+                                  {(item.price / item.quantity).toLocaleString()} XOF / unité
+                                </p>
+                              </div>
                             </div>
-                            <div className="text-right">
-                              <p className="font-semibold text-gray-900 dark:text-white">
-                                {item.price.toLocaleString()} XOF
-                              </p>
-                              <p className="text-sm text-gray-500">
-                                {(item.price / item.quantity).toLocaleString()} XOF / unité
-                              </p>
-                            </div>
-                          </div>
-                        ))}
+                          ))
+                        ) : (
+                          <p className="text-gray-500 text-center py-4">Aucun article dans cette commande</p>
+                        )}
                       </div>
                     </div>
 
@@ -634,8 +754,18 @@ const OrdersPage: React.FC = () => {
                         variant="secondary"
                         fullWidth
                         icon={<Download className="w-4 h-4" />}
+                        onClick={() => handleDownloadInvoice(selectedOrder)}
                       >
-                        Télécharger Facture
+                        Télécharger Facture PDF
+                      </Button>
+                      
+                      <Button
+                        variant="secondary"
+                        fullWidth
+                        icon={<Printer className="w-4 h-4" />}
+                        onClick={() => handlePrintInvoice(selectedOrder)}
+                      >
+                        Imprimer Facture
                       </Button>
                     </div>
 

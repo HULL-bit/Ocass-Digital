@@ -27,6 +27,7 @@ import {
 import Button from '../../components/ui/Button';
 import MetricCard from '../../components/ui/MetricCard';
 import apiService from '../../services/api/realApi';
+import { getCompanyLogo, getCompanyLogoBySector } from '../../utils/companyLogos';
 
 const CompaniesManagementPage: React.FC = () => {
   const navigate = useNavigate();
@@ -58,13 +59,24 @@ const CompaniesManagementPage: React.FC = () => {
       let hasMore = true;
       let maxPages = 10; // Limite de sécurité pour éviter les boucles infinies
       
-      // Récupérer aussi les utilisateurs pour la synchronisation
-      let usersResponse;
+      // Récupérer aussi les utilisateurs pour la synchronisation (seulement si admin)
+      let usersResponse = { results: [] };
       try {
-        usersResponse = await apiService.getUsers();
-        console.log('Utilisateurs récupérés pour synchronisation:', usersResponse.results?.length || 0);
-      } catch (userError) {
-        console.log('Erreur lors de la récupération des utilisateurs, continuation sans synchronisation');
+        const userData = localStorage.getItem('user');
+        if (userData) {
+          const user = JSON.parse(userData);
+          if (user.type_utilisateur === 'admin') {
+            usersResponse = await apiService.getUsers();
+            console.log('Utilisateurs récupérés pour synchronisation:', usersResponse.results?.length || 0);
+          } else {
+            console.log('Utilisateur non-admin, skip récupération des utilisateurs');
+          }
+        }
+      } catch (userError: any) {
+        // Ne pas logger les erreurs 401/403 comme des erreurs
+        if (userError?.response?.status !== 401 && userError?.response?.status !== 403) {
+          console.log('Erreur lors de la récupération des utilisateurs, continuation sans synchronisation');
+        }
         usersResponse = { results: [] };
       }
       
@@ -106,7 +118,7 @@ const CompaniesManagementPage: React.FC = () => {
         name: company.nom,
         sector: company.secteur_activite,
         description: company.description || 'Aucune description',
-        logo: company.logo || 'https://images.pexels.com/photos/3184291/pexels-photo-3184291.jpeg?auto=compress&cs=tinysrgb&w=200&h=200&dpr=2',
+        logo: company.logo || getCompanyLogoBySector(company.secteur_activite) || getCompanyLogo(company.id),
         address: company.adresse_complete,
         phone: company.telephone,
         email: company.email,
@@ -664,7 +676,10 @@ const CompaniesManagementPage: React.FC = () => {
                       variant="primary"
                       size="sm"
                       icon={<Package className="w-3 h-3" />}
-                      onClick={() => navigate(`/companies/${company.id}/products`)}
+                      onClick={(e) => {
+                        e.stopPropagation(); // Empêcher l'ouverture du modal de détails
+                        navigate(`/companies/${company.id}/products`);
+                      }}
                     >
                       Produits
                     </Button>

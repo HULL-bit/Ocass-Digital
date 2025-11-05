@@ -31,13 +31,33 @@ class MarqueSerializer(serializers.ModelSerializer):
 
 class ImageProduitSerializer(serializers.ModelSerializer):
     """Serializer pour les images de produits."""
+    image_url = serializers.SerializerMethodField()
     
     class Meta:
         model = ImageProduit
         fields = [
-            'id', 'image', 'alt_text', 'principale', 'ordre_affichage',
+            'id', 'produit', 'image', 'image_url', 'alt_text', 'principale', 'ordre_affichage',
             'couleur', 'taille'
         ]
+        read_only_fields = ['id']
+    
+    def get_image_url(self, obj):
+        """Retourne l'URL complète de l'image."""
+        if obj.image:
+            request = self.context.get('request')
+            if request:
+                # Construire l'URL absolue avec le domaine
+                return request.build_absolute_uri(obj.image.url)
+            else:
+                # Fallback si pas de requête dans le contexte
+                from django.conf import settings
+                base_url = 'http://localhost:8000'
+                image_path = obj.image.url if hasattr(obj.image, 'url') else str(obj.image)
+                # S'assurer que le chemin commence par /media/
+                if not image_path.startswith('/media/'):
+                    image_path = f"/media/{image_path}"
+                return f"{base_url}{image_path}"
+        return None
 
 
 class VarianteProduitSerializer(serializers.ModelSerializer):
@@ -80,7 +100,8 @@ class ProduitListSerializer(serializers.ModelSerializer):
         """Retourne seulement la première image pour optimiser les performances."""
         first_image = obj.images.first()
         if first_image:
-            return [ImageProduitSerializer(first_image).data]
+            serializer = ImageProduitSerializer(first_image, context=self.context)
+            return [serializer.data]
         return []
 
 
@@ -164,6 +185,10 @@ class ProduitCreateSerializer(serializers.ModelSerializer):
         # Retirer le champ dimensions qui n'existe plus dans le modèle
         validated_data.pop('dimensions', None)
         
+        # S'assurer que le stock est défini correctement
+        if 'stock' not in validated_data or validated_data['stock'] is None:
+            validated_data['stock'] = 0
+        
         # Traiter les champs JSON
         if 'couleurs_disponibles' in validated_data and isinstance(validated_data['couleurs_disponibles'], str):
             try:
@@ -177,7 +202,37 @@ class ProduitCreateSerializer(serializers.ModelSerializer):
             except json.JSONDecodeError:
                 validated_data['tailles_disponibles'] = []
         
+        print(f"✅ Données validées pour création produit: {validated_data}")
         return super().create(validated_data)
+    
+    def update(self, instance, validated_data):
+        """Override pour gérer la mise à jour de produits."""
+        # Retirer les images du validated_data car elles sont gérées séparément
+        validated_data.pop('images', None)
+        
+        # Retirer les champs de stock qui n'existent plus dans le modèle
+        validated_data.pop('stock_initial', None)
+        validated_data.pop('stock_minimum', None)
+        validated_data.pop('stock_maximum', None)
+        
+        # Retirer le champ dimensions qui n'existe plus dans le modèle
+        validated_data.pop('dimensions', None)
+        
+        # Traiter les champs JSON
+        if 'couleurs_disponibles' in validated_data and isinstance(validated_data['couleurs_disponibles'], str):
+            try:
+                validated_data['couleurs_disponibles'] = json.loads(validated_data['couleurs_disponibles'])
+            except json.JSONDecodeError:
+                validated_data['couleurs_disponibles'] = []
+        
+        if 'tailles_disponibles' in validated_data and isinstance(validated_data['tailles_disponibles'], str):
+            try:
+                validated_data['tailles_disponibles'] = json.loads(validated_data['tailles_disponibles'])
+            except json.JSONDecodeError:
+                validated_data['tailles_disponibles'] = []
+        
+        print(f"✅ Données validées pour mise à jour produit: {validated_data}")
+        return super().update(instance, validated_data)
 
 
 class FournisseurSerializer(serializers.ModelSerializer):

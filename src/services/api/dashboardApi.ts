@@ -200,9 +200,31 @@ class DashboardApiService {
 
   private async getUsersData() {
     try {
+      // Vérifier si l'utilisateur est admin avant de charger les utilisateurs
+      const userData = localStorage.getItem('user');
+      if (!userData) {
+        return [];
+      }
+      
+      let user;
+      try {
+        user = JSON.parse(userData);
+      } catch (e) {
+        return [];
+      }
+      
+      // Seuls les admins peuvent voir tous les utilisateurs
+      if (user.type_utilisateur !== 'admin') {
+        return [];
+      }
+      
       const response = await apiService.getUsers();
       return response.results || response || [];
-    } catch (error) {
+    } catch (error: any) {
+      // Ne pas logger les erreurs 401/403 comme des erreurs critiques
+      if (error?.response?.status === 401 || error?.response?.status === 403) {
+        return [];
+      }
       console.error('Erreur lors du chargement des utilisateurs:', error);
       return [];
     }

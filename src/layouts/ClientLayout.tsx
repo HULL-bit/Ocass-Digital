@@ -217,7 +217,7 @@ const ClientLayout: React.FC = () => {
               
               <div className="flex items-center space-x-3 mb-4">
                 <img
-                  src={getAvatarWithFallback(user?.avatar, user?.email || '')}
+                  src={getAvatarWithFallback(user?.avatar, user?.email || '', user?.firstName)}
                   alt={user?.firstName}
                   className="w-10 h-10 rounded-full object-cover"
                 />

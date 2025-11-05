@@ -85,7 +85,7 @@ const CustomersPage: React.FC = () => {
         date_derniere_commande: customer.date_derniere_commande,
         source_acquisition: customer.source_acquisition || 'direct',
         statut: customer.statut || 'actif',
-        avatar: getAvatarWithFallback(customer.avatar, customer.email),
+        avatar: getAvatarWithFallback(customer.avatar, customer.email, customer.nom?.split(' ')[0] || customer.prenom),
         preferences: customer.preferences || {
           communication: ['email'],
           categories_preferees: ['Général'],
@@ -166,7 +166,7 @@ const CustomersPage: React.FC = () => {
       date_derniere_commande: '2024-01-15T10:30:00Z',
       source_acquisition: 'referencement',
       statut: 'actif',
-      avatar: getAvatarWithFallback(null, 'client1@exemple.com'),
+      avatar: getAvatarWithFallback(null, 'client1@exemple.com', 'Aïcha'),
       preferences: {
         communication: ['email', 'sms'],
         categories_preferees: ['Mode', 'Beauté'],
@@ -198,7 +198,7 @@ const CustomersPage: React.FC = () => {
       date_derniere_commande: '2024-01-12T16:45:00Z',
       source_acquisition: 'bouche_a_oreille',
       statut: 'actif',
-      avatar: getAvatarWithFallback(null, 'client2@exemple.com'),
+      avatar: getAvatarWithFallback(null, 'client2@exemple.com', 'Ousmane'),
       entreprise_nom: 'Garage Auto Ndiaye',
       preferences: {
         communication: ['email'],
@@ -231,7 +231,7 @@ const CustomersPage: React.FC = () => {
       date_derniere_commande: '2024-01-10T14:15:00Z',
       source_acquisition: 'reseaux_sociaux',
       statut: 'actif',
-      avatar: getAvatarWithFallback(null, 'client1@exemple.com'),
+      avatar: getAvatarWithFallback(null, 'client1@exemple.com', 'Aïcha'),
       preferences: {
         communication: ['email', 'push'],
         categories_preferees: ['Mode', 'Cosmétiques'],

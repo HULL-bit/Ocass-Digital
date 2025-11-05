@@ -201,81 +201,80 @@ class RegisterSerializer(serializers.ModelSerializer):
         """Génère une URL d'avatar appropriée basée sur le type d'utilisateur."""
         import random
         
-        # Avatars pour administrateurs (Africains noirs)
+        # Avatars pour administrateurs (Africains locaux) - Hommes
         admin_avatars = [
-            'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop&crop=face',
-            'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200&h=200&fit=crop&crop=face',
-            'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&h=200&fit=crop&crop=face',
-            'https://images.unsplash.com/photo-1519244703995-f4e0f30006d5?w=200&h=200&fit=crop&crop=face',
-            'https://images.unsplash.com/photo-1560250097-0b93528c311a?w=200&h=200&fit=crop&crop=face',
-            'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=200&h=200&fit=crop&crop=face',
-            'https://images.unsplash.com/photo-1582750433449-648ed127bb54?w=200&h=200&fit=crop&crop=face',
-            'https://images.unsplash.com/photo-1595152772835-219674b2a8a6?w=200&h=200&fit=crop&crop=face',
-            'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?w=200&h=200&fit=crop&crop=face',
+            '/Res/pexels-cenali-2733918.jpg',
+            '/Res/pexels-bohlemedia-1884581.jpg',
+            '/Res/tech.jpg',
+            '/Res/entrepreneur.png',
+            '/Res/ent2.png',
+            '/Res/stefan-buhler-qQY44BbC2mw-unsplash.jpg',
+            '/Res/shivansh-sharma-l2cFxUEEY7I-unsplash.jpg',
+            '/Res/mathieu-gauzy-qLT3rBVwiLY-unsplash.jpg',
+            '/Res/gerent.jpg',
         ]
         
         # Avatars pour entrepreneurs (hommes d'affaires africains)
         entrepreneur_male_avatars = [
-            'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop&crop=face',
-            'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200&h=200&fit=crop&crop=face',
-            'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&h=200&fit=crop&crop=face',
-            'https://images.unsplash.com/photo-1519244703995-f4e0f30006d5?w=200&h=200&fit=crop&crop=face',
-            'https://images.unsplash.com/photo-1560250097-0b93528c311a?w=200&h=200&fit=crop&crop=face',
-            'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=200&h=200&fit=crop&crop=face',
-            'https://images.unsplash.com/photo-1582750433449-648ed127bb54?w=200&h=200&fit=crop&crop=face',
-            'https://images.unsplash.com/photo-1595152772835-219674b2a8a6?w=200&h=200&fit=crop&crop=face',
+            '/Res/pexels-cenali-2733918.jpg',
+            '/Res/pexels-bohlemedia-1884581.jpg',
+            '/Res/tech.jpg',
+            '/Res/entrepreneur.png',
+            '/Res/ent2.png',
+            '/Res/stefan-buhler-qQY44BbC2mw-unsplash.jpg',
+            '/Res/shivansh-sharma-l2cFxUEEY7I-unsplash.jpg',
+            '/Res/mathieu-gauzy-qLT3rBVwiLY-unsplash.jpg',
+            '/Res/gerent.jpg',
         ]
         
         # Avatars pour entrepreneures (femmes d'affaires africaines)
         entrepreneur_female_avatars = [
-            'https://images.unsplash.com/photo-1494790108755-2616b612b786?w=200&h=200&fit=crop&crop=face',
-            'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200&h=200&fit=crop&crop=face',
-            'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=200&h=200&fit=crop&crop=face',
-            'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&h=200&fit=crop&crop=face',
-            'https://images.unsplash.com/photo-1487412720507-e7ab37603c6f?w=200&h=200&fit=crop&crop=face',
-            'https://images.unsplash.com/photo-1508214751196-bcfd4ca60f91?w=200&h=200&fit=crop&crop=face',
-            'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=200&h=200&fit=crop&crop=face',
-            'https://images.unsplash.com/photo-1594736797933-d0c29c0b8b0a?w=200&h=200&fit=crop&crop=face',
+            '/Res/pexels-planeteelevene-2290243.jpg',
+            '/Res/pexels-shattha-pilabut-38930-135620.jpg',
+            '/Res/rutendo-petros-Tzp_yd6W8LM-unsplash.jpg',
+            '/Res/couture.jpg',
+            '/Res/monody-le-mZ_7CuqsRV0-unsplash.jpg',
+            '/Res/boutiqueMarie%20Diallo.jpg',
+            '/Res/boutque.jpg',
         ]
         
-        # Avatars pour clients (Africains noirs)
+        # Avatars pour clients (Africains locaux) - Mixte
         client_avatars = [
-            'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop&crop=face',
-            'https://images.unsplash.com/photo-1494790108755-2616b612b786?w=200&h=200&fit=crop&crop=face',
-            'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200&h=200&fit=crop&crop=face',
-            'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200&h=200&fit=crop&crop=face',
-            'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&h=200&fit=crop&crop=face',
-            'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=200&h=200&fit=crop&crop=face',
-            'https://images.unsplash.com/photo-1519244703995-f4e0f30006d5?w=200&h=200&fit=crop&crop=face',
-            'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&h=200&fit=crop&crop=face',
-            'https://images.unsplash.com/photo-1560250097-0b93528c311a?w=200&h=200&fit=crop&crop=face',
-            'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=200&h=200&fit=crop&crop=face',
-            'https://images.unsplash.com/photo-1487412720507-e7ab37603c6f?w=200&h=200&fit=crop&crop=face',
-            'https://images.unsplash.com/photo-1508214751196-bcfd4ca60f91?w=200&h=200&fit=crop&crop=face',
-            'https://images.unsplash.com/photo-1582750433449-648ed127bb54?w=200&h=200&fit=crop&crop=face',
-            'https://images.unsplash.com/photo-1595152772835-219674b2a8a6?w=200&h=200&fit=crop&crop=face',
+            '/Res/pexels-cenali-2733918.jpg',
+            '/Res/pexels-planeteelevene-2290243.jpg',
+            '/Res/pexels-bohlemedia-1884581.jpg',
+            '/Res/pexels-shattha-pilabut-38930-135620.jpg',
+            '/Res/tech.jpg',
+            '/Res/rutendo-petros-Tzp_yd6W8LM-unsplash.jpg',
+            '/Res/couture.jpg',
+            '/Res/entrepreneur.png',
+            '/Res/ent2.png',
+            '/Res/stefan-buhler-qQY44BbC2mw-unsplash.jpg',
+            '/Res/boutiqueMarie%20Diallo.jpg',
+            '/Res/boutque.jpg',
+            '/Res/gerent.jpg',
         ]
         
-        # Avatars pour employés (Africains noirs)
+        # Avatars pour employés (Africains locaux) - Mixte
         employee_avatars = [
-            'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop&crop=face',
-            'https://images.unsplash.com/photo-1494790108755-2616b612b786?w=200&h=200&fit=crop&crop=face',
-            'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200&h=200&fit=crop&crop=face',
-            'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200&h=200&fit=crop&crop=face',
-            'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&h=200&fit=crop&crop=face',
-            'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=200&h=200&fit=crop&crop=face',
-            'https://images.unsplash.com/photo-1582750433449-648ed127bb54?w=200&h=200&fit=crop&crop=face',
-            'https://images.unsplash.com/photo-1595152772835-219674b2a8a6?w=200&h=200&fit=crop&crop=face',
+            '/Res/pexels-cenali-2733918.jpg',
+            '/Res/pexels-planeteelevene-2290243.jpg',
+            '/Res/pexels-bohlemedia-1884581.jpg',
+            '/Res/pexels-shattha-pilabut-38930-135620.jpg',
+            '/Res/tech.jpg',
+            '/Res/rutendo-petros-Tzp_yd6W8LM-unsplash.jpg',
+            '/Res/entrepreneur.png',
+            '/Res/ent2.png',
         ]
         
-        # Avatars pour support (Africains noirs)
+        # Avatars pour support (Africains locaux) - Mixte
         support_avatars = [
-            'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop&crop=face',
-            'https://images.unsplash.com/photo-1494790108755-2616b612b786?w=200&h=200&fit=crop&crop=face',
-            'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200&h=200&fit=crop&crop=face',
-            'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200&h=200&fit=crop&crop=face',
-            'https://images.unsplash.com/photo-1582750433449-648ed127bb54?w=200&h=200&fit=crop&crop=face',
-            'https://images.unsplash.com/photo-1595152772835-219674b2a8a6?w=200&h=200&fit=crop&crop=face',
+            '/Res/pexels-cenali-2733918.jpg',
+            '/Res/pexels-planeteelevene-2290243.jpg',
+            '/Res/tech.jpg',
+            '/Res/entrepreneur.png',
+            '/Res/ent2.png',
+            '/Res/gerent.jpg',
         ]
         
         # Sélectionner l'avatar approprié

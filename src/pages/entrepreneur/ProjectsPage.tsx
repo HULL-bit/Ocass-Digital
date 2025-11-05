@@ -53,11 +53,11 @@ const ProjectsPage: React.FC = () => {
       responsable: {
         id: '1',
         nom: 'Amadou Ba',
-        avatar: getAvatarWithFallback(null, 'user1@exemple.com'),
+        avatar: getAvatarWithFallback(null, 'user1@exemple.com', 'Amadou'),
       },
       equipe: [
-        { id: '1', nom: 'Fatou Sow', role: 'Designer', avatar: getAvatarWithFallback(null, 'fatou@exemple.com') },
-        { id: '2', nom: 'Ousmane Diallo', role: 'Développeur', avatar: getAvatarWithFallback(null, 'ousmane@exemple.com') },
+        { id: '1', nom: 'Fatou Sow', role: 'Designer', avatar: getAvatarWithFallback(null, 'fatou@exemple.com', 'Fatou') },
+        { id: '2', nom: 'Ousmane Diallo', role: 'Développeur', avatar: getAvatarWithFallback(null, 'ousmane@exemple.com', 'Ousmane') },
       ],
       date_debut: '2024-01-01',
       date_fin_prevue: '2024-03-15',
@@ -95,10 +95,10 @@ const ProjectsPage: React.FC = () => {
       responsable: {
         id: '1',
         nom: 'Amadou Ba',
-        avatar: getAvatarWithFallback(null, 'user1@exemple.com'),
+        avatar: getAvatarWithFallback(null, 'user1@exemple.com', 'Amadou'),
       },
       equipe: [
-        { id: '3', nom: 'Khadija Fall', role: 'Analyste', avatar: getAvatarWithFallback(null, 'khadija@exemple.com') },
+        { id: '3', nom: 'Khadija Fall', role: 'Analyste', avatar: getAvatarWithFallback(null, 'khadija@exemple.com', 'Khadija') },
       ],
       date_debut: '2023-12-01',
       date_fin_prevue: '2024-02-29',
@@ -135,11 +135,11 @@ const ProjectsPage: React.FC = () => {
       responsable: {
         id: '1',
         nom: 'Amadou Ba',
-        avatar: getAvatarWithFallback(null, 'user1@exemple.com'),
+        avatar: getAvatarWithFallback(null, 'user1@exemple.com', 'Amadou'),
       },
       equipe: [
-        { id: '4', nom: 'Ibrahima Sarr', role: 'Dev Mobile', avatar: getAvatarWithFallback(null, 'ibrahima@exemple.com') },
-        { id: '5', nom: 'Mariama Thiam', role: 'UX Designer', avatar: getAvatarWithFallback(null, 'mariama@exemple.com') },
+        { id: '4', nom: 'Ibrahima Sarr', role: 'Dev Mobile', avatar: getAvatarWithFallback(null, 'ibrahima@exemple.com', 'Ibrahima') },
+        { id: '5', nom: 'Mariama Thiam', role: 'UX Designer', avatar: getAvatarWithFallback(null, 'mariama@exemple.com', 'Mariama') },
       ],
       date_debut: '2024-01-15',
       date_fin_prevue: '2024-04-30',

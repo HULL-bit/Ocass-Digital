@@ -1,14 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Eye, EyeOff, Mail, Lock, ArrowRight } from 'lucide-react';
+import { Eye, EyeOff, Mail, Lock, ArrowRight, ChevronUp, Sparkles } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotifications } from '../../contexts/NotificationContext';
-import loginBgVideo from './2252824-uhd_3840_2160_30fps.mp4';
+
 
 const LoginPage: React.FC = () => {
   console.log('LoginPage component is rendering');
   
+  const [showHomePage, setShowHomePage] = useState(true);
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -39,33 +40,36 @@ const LoginPage: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   
-  // Vérifier que le contexte Auth est disponible
-  let login, addNotification;
-  try {
-    const authContext = useAuth();
-    const notificationContext = useNotifications();
-    login = authContext.login;
-    addNotification = notificationContext.addNotification;
-  } catch (error) {
-    console.error('Auth context not available:', error);
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-red-600 mb-4">Erreur d'authentification</h1>
-          <p className="text-gray-600">Le contexte d'authentification n'est pas disponible.</p>
-          <button 
-            onClick={() => window.location.reload()} 
-            className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-          >
-            Recharger la page
-          </button>
-        </div>
-      </div>
-    );
-  }
-  
+  // Toujours appeler tous les hooks dans le même ordre
   const navigate = useNavigate();
+  const authContext = useAuth();
+  const notificationContext = useNotifications();
+  
+  const login = authContext.login;
+  const addNotification = notificationContext.addNotification;
 
+  // Slides du carousel (mêmes que dans LandingPage)
+  const heroSlides = useMemo(
+    () => [
+      { type: 'video', src: '/Res/20450812-hd_1920_1080_30fps.mp4', headline: "L'écosystème des entreprises locales", sub: "Explorez les secteurs, découvrez des produits et connectez-vous." },
+      { type: 'image', src: '/Res/ent2.png', headline: 'Des vitrines premium', sub: 'Produits sélectionnés avec des présentations élégantes.' },
+      { type: 'image', src: '/Res/boutiqueMarie%20Diallo.jpg', headline: 'Rejoignez la plateforme', sub: 'Créez un compte pour profiter de toutes les fonctionnalités.' },
+      { type: 'image', src: '/Res/entrepreneur.png', headline: 'Innovation et services', sub: 'Un réseau de professionnels à votre portée.' },
+      { type: 'image', src: '/Res/SuperMarche.jpg', headline: 'Qualité et confiance', sub: 'Des entreprises vérifiées et des produits authentiques.' },
+    ],
+    []
+  );
+  const [activeSlide, setActiveSlide] = useState(0);
+  const [videoError, setVideoError] = useState(false);
+  
+  const goNext = () => setActiveSlide((i) => (i + 1) % heroSlides.length);
+  
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setActiveSlide((i) => (i + 1) % heroSlides.length);
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [heroSlides.length]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -142,6 +146,8 @@ const LoginPage: React.FC = () => {
     }));
   };
 
+  
+
   return (
     <div className="min-h-screen flex items-center justify-center p-0">
       <div className="w-full max-w-none" style={{ width: '90vw', maxWidth: 'none', minWidth: '90vw' }}> 
@@ -152,7 +158,7 @@ const LoginPage: React.FC = () => {
           className="glass-morphism rounded-3xl p-4 shadow-2xl w-full"
         >
           <div className="flex w-full h-full rounded-3xl justify-center" style={{ gap: '30px', width: '100%' }}>
-            {/* Section Vidéo - 2/3 du bloc */}
+            {/* Section Carousel - 2/3 du bloc */}
             <motion.div
               initial={{ opacity: 0, x: -50 }}
               animate={{ opacity: 1, x: 0 }}
@@ -160,21 +166,54 @@ const LoginPage: React.FC = () => {
               className="hidden lg:flex relative overflow-hidden"
               style={{ width: 'calc(70% - 2px)' }}
             >
-              <div className="w-full h-full rounded-3xl overflow-hidden">
-                {/* Vidéo illustrative */}
-                <video
-                  autoPlay
-                  muted
-                  loop
-                  playsInline
-                  className="w-full h-full object-cover rounded-3xl"
-                  style={{ filter: 'brightness(0.99)' }}
-                >
-                  <source src={loginBgVideo} type="video/mp4" />
-                </video>
+              <div className="w-full h-full rounded-3xl overflow-hidden relative">
+                {/* Slides du carousel */}
+                <div className="absolute inset-0" style={{ zIndex: 0 }}>
+                  {heroSlides.map((s, index) => (
+                    <div
+                      key={index}
+                      className={`absolute inset-0 transition-opacity duration-700 ${
+                        index === activeSlide ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                      }`}
+                      style={{ zIndex: index === activeSlide ? 1 : 0 }}
+                    >
+                      {s.type === 'video' && !videoError ? (
+                        <video
+                          className="h-full w-full object-cover"
+                          src={s.src}
+                          autoPlay
+                          muted
+                          loop
+                          playsInline
+                          poster="/Res/iwaria-inc-JnOFLg09yRE-unsplash.jpg"
+                          onError={() => {
+                            console.error('Video error:', s.src);
+                            setVideoError(true);
+                          }}
+                        />
+                      ) : s.type === 'image' ? (
+                        <img
+                          className="h-full w-full object-cover"
+                          src={s.src}
+                          alt={`slide ${index + 1}`}
+                          loading={index === 0 ? 'eager' : 'lazy'}
+                          style={{ filter: 'brightness(0.7)' }}
+                          onLoad={() => console.log('Image loaded:', s.src)}
+                          onError={(e) => {
+                            console.error('Image error:', s.src);
+                            const t = e.currentTarget as HTMLImageElement;
+                            t.src = '/Res/boutique.jpg';
+                          }}
+                        />
+                      ) : null}
+                    </div>
+                  ))}
+                  {/* Overlay pour améliorer la lisibilité du texte */}
+                  <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/30 to-black/50" style={{ zIndex: 2 }} />
+                </div>
                 
                 {/* Overlay avec contenu */}
-                <div className="absolute inset-0 bg-gradient-to-br from-black/40 via-black/30 to-black/40 flex flex-col justify-center items-center text-white p-8">
+                <div className="absolute inset-0 flex flex-col justify-center items-center text-white p-8" style={{ zIndex: 20 }}>
                   <motion.div
                     initial={{ scale: 0, rotate: -180 }}
                     animate={{ scale: 1, rotate: 0 }}
@@ -188,23 +227,26 @@ const LoginPage: React.FC = () => {
                     />
                   </motion.div>
                   
-                  <motion.h1
+                  <motion.div
+                    key={activeSlide}
                     initial={{ y: 30, opacity: 0 }}
                     animate={{ y: 0, opacity: 1 }}
                     transition={{ delay: 0.5 }}
-                    className="text-5xl font-bold mb-6 text-center"
+                    className="text-center mb-6"
                   >
-                    OCASS DIGITAL
-                  </motion.h1>
-                  
-                  <motion.p
-                    initial={{ y: 30, opacity: 0 }}
-                    animate={{ y: 0, opacity: 1 }}
-                    transition={{ delay: 0.7 }}
-                    className="text-xl text-center mb-8 max-w-md"
-                  >
-                    La plateforme commerciale intelligente qui révolutionne le monde du commerce au Sénégal
-                  </motion.p>
+                    <div className="mb-6 flex items-center justify-center">
+                      <button className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/15 text-white/90 shadow-[inset_0_-1px_0_0_rgba(255,255,255,0.1)]">
+                        <Sparkles className="h-4 w-4 text-electric-500" />
+                        <span className="text-sm">Rejoignez-nous</span>
+                      </button>
+                    </div>
+                    <h1 className="text-5xl font-extrabold leading-tight mb-6" style={{ color: 'rgba(255, 255, 255, 0.9)' }}>
+                      {heroSlides[activeSlide].headline}
+                    </h1>
+                    <p className="text-xl max-w-md mx-auto" style={{ color: 'rgba(255, 255, 255, 0.8)' }}>
+                      {heroSlides[activeSlide].sub}
+                    </p>
+                  </motion.div>
                   
                   <motion.div
                     initial={{ y: 30, opacity: 0 }}
@@ -228,6 +270,20 @@ const LoginPage: React.FC = () => {
                       <p className="text-sm opacity-90">Réseau connecté</p>
                     </div>
                   </motion.div>
+                  
+                  {/* Indicateurs du carrousel */}
+                  <div className="absolute bottom-8 left-0 right-0 flex items-center justify-center gap-2">
+                    {heroSlides.map((_, i) => (
+                      <button
+                        key={i}
+                        onClick={() => setActiveSlide(i)}
+                        className={`h-2 w-2 rounded-full transition-all ${
+                          i === activeSlide ? 'bg-electric-500 w-8' : 'bg-white/40'
+                        }`}
+                        aria-label={`Aller au slide ${i + 1}`}
+                      />
+                    ))}
+                  </div>
                 </div>
               </div>
             </motion.div>
@@ -467,10 +523,21 @@ const LoginPage: React.FC = () => {
         </motion.div>
       </form>
               </div>
-            </motion.div>
-          </div>
+        </motion.div>
+      </div>
     </motion.div>
       </div>
+      
+      {/* Bouton pour retourner à la page d'accueil */}
+      <motion.button
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.5 }}
+        onClick={() => navigate('/')}
+        className="fixed top-8 left-8 z-50 bg-white/10 backdrop-blur-sm text-white px-4 py-2 rounded-full border border-white/20 hover:bg-white/20 transition-all duration-300 flex items-center space-x-2"
+      >
+        <span>← Retour</span>
+      </motion.button>
     </div>
   );
 };

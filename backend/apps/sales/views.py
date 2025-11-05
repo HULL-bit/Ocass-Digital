@@ -8,6 +8,7 @@ from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from django.utils import timezone
+from django.http import HttpResponse
 from .models import Vente, LigneVente, Devis, LigneDevis
 from .serializers import VenteSerializer, DevisSerializer
 from apps.core.permissions import IsEntrepreneurOrAdmin
@@ -72,17 +73,26 @@ class VenteViewSet(viewsets.ModelViewSet):
     
     @action(detail=True, methods=['post'])
     def print_invoice(self, request, pk=None):
-        """Générer et imprimer la facture."""
+        """Générer et télécharger la facture PDF."""
         vente = self.get_object()
         
-        # Ici on générerait le PDF de la facture
-        # Pour la démo, on retourne juste une URL
-        pdf_url = f"/media/invoices/facture_{vente.numero_facture}.pdf"
-        
-        return Response({
-            'pdf_url': pdf_url,
-            'message': 'Facture générée'
-        })
+        try:
+            from apps.core.pdf_utils import generate_invoice_pdf
+            
+            # Créer la réponse HTTP pour le PDF
+            response = HttpResponse(content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename="facture_{vente.numero_facture}.pdf"'
+            
+            # Générer le PDF
+            generate_invoice_pdf(vente, response)
+            
+            return response
+            
+        except Exception as e:
+            return Response(
+                {'error': f'Erreur lors de la génération du PDF: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 class DevisViewSet(viewsets.ModelViewSet):
