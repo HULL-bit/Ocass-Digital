@@ -33,18 +33,88 @@ def format_currency(amount, currency='XOF'):
 
 
 def generate_invoice_number(entreprise_id):
-    """Génère un numéro de facture unique."""
+    """
+    Génère un numéro de facture unique avec protection contre les doublons.
+    
+    IMPORTANT: Cette fonction doit être appelée dans une transaction.atomic()
+    pour que select_for_update() fonctionne correctement.
+    """
+    from django.db import transaction
+    from apps.sales.models import Vente
+    
     today = timezone.now()
     prefix = f"FAC{today.year}{today.month:02d}"
     
-    # Compter les factures du mois
-    from apps.sales.models import Vente
-    count = Vente.objects.filter(
-        numero_facture__startswith=prefix,
-        entrepreneur__entreprise_id=entreprise_id
-    ).count() + 1
+    # Vérifier si on est déjà dans une transaction
+    # Si oui, utiliser la transaction existante, sinon créer une nouvelle
+    if transaction.get_connection().in_atomic_block:
+        # On est déjà dans une transaction, utiliser select_for_update directement
+        use_transaction = False
+    else:
+        # Pas de transaction, en créer une
+        use_transaction = True
     
-    return f"{prefix}{count:04d}"
+    def _generate():
+        # Verrouiller les lignes existantes pour cette entreprise/mois
+        if entreprise_id:
+            # Filtrer par entreprise et verrouiller
+            queryset = Vente.objects.select_for_update().filter(
+                numero_facture__startswith=prefix,
+                entrepreneur__entreprise_id=entreprise_id
+            )
+            last_invoice = queryset.order_by('-numero_facture').first()
+        else:
+            # Pas d'entreprise, utiliser un compteur global
+            queryset = Vente.objects.select_for_update().filter(
+                numero_facture__startswith=prefix
+            )
+            last_invoice = queryset.order_by('-numero_facture').first()
+        
+        if last_invoice:
+            # Extraire le numéro de séquence du dernier numéro
+            try:
+                last_number = int(last_invoice.numero_facture[-4:])
+                count = last_number + 1
+            except (ValueError, IndexError):
+                # Si le format est incorrect, compter les factures
+                if entreprise_id:
+                    count = Vente.objects.filter(
+                        numero_facture__startswith=prefix,
+                        entrepreneur__entreprise_id=entreprise_id
+                    ).count() + 1
+                else:
+                    count = Vente.objects.filter(
+                        numero_facture__startswith=prefix
+                    ).count() + 1
+        else:
+            count = 1
+        
+        # Générer le nouveau numéro
+        new_number = f"{prefix}{count:04d}"
+        
+        # Vérifier que le numéro n'existe pas déjà (double sécurité)
+        max_attempts = 100
+        attempts = 0
+        while Vente.objects.filter(numero_facture=new_number).exists() and attempts < max_attempts:
+            count += 1
+            new_number = f"{prefix}{count:04d}"
+            attempts += 1
+        
+        if attempts >= max_attempts:
+            # En dernier recours, utiliser un timestamp avec suffixe unique
+            import time
+            import random
+            timestamp_suffix = int(time.time()) % 10000
+            random_suffix = random.randint(0, 99)
+            new_number = f"{prefix}{timestamp_suffix:04d}{random_suffix:02d}"
+        
+        return new_number
+    
+    if use_transaction:
+        with transaction.atomic():
+            return _generate()
+    else:
+        return _generate()
 
 
 def send_notification_email(user, subject, message, html_message=None):

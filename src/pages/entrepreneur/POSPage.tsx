@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 import { 
   ShoppingCart, 
   Plus, 
@@ -16,14 +17,18 @@ import {
   Printer,
   Send,
   CheckCircle,
-  X
+  X,
+  Package
 } from 'lucide-react';
 import Button from '../../components/ui/Button';
 import AnimatedForm from '../../components/forms/AnimatedForm';
 import apiService from '../../services/api/realApi';
+import { useAuth } from '../../contexts/AuthContext';
 import * as yup from 'yup';
 
 const POSPage: React.FC = () => {
+  const navigate = useNavigate();
+  const { user } = useAuth();
   const [cart, setCart] = useState<any[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
   const [paymentMethod, setPaymentMethod] = useState('cash');
@@ -43,23 +48,54 @@ const POSPage: React.FC = () => {
   const loadProducts = async () => {
     try {
       setLoading(true);
-      const response = await apiService.getProducts();
+      
+      // Essayer d'abord avec getAllProducts() qui récupère tous les produits
+      let response;
+      try {
+        response = await apiService.getAllProducts();
+        console.log('Produits chargés via getAllProducts (POSPage):', response);
+      } catch (error) {
+        console.warn('Erreur avec getAllProducts, essai avec getProducts:', error);
+        response = await apiService.getProducts({ page_size: 100 });
+        console.log('Produits chargés via getProducts (POSPage):', response);
+      }
+      
+      // Gérer différents formats de réponse
+      let productsData: any[] = [];
+      if (response && Array.isArray(response)) {
+        productsData = response;
+      } else if (response && response.results && Array.isArray(response.results)) {
+        productsData = response.results;
+      } else if (response && response.data && Array.isArray(response.data)) {
+        productsData = response.data;
+      } else {
+        console.warn('Format de réponse des produits non reconnu:', response);
+        productsData = [];
+      }
+      
+      console.log('Produits extraits (POSPage):', productsData.length);
+      if (productsData.length === 0) {
+        console.warn('⚠️ Aucun produit trouvé dans POSPage.');
+      }
       
       // Transformer les données pour correspondre au format attendu
-      const transformedProducts = response.results?.map((product: any) => ({
+      const transformedProducts = productsData.map((product: any) => ({
         ...product,
         // Utiliser la première image disponible ou une image par défaut
         image: product.images && product.images.length > 0 ? 
-          (product.images[0].image.startsWith('http') ? product.images[0].image : `http://localhost:8000${product.images[0].image}`) :
-          'https://images.pexels.com/photos/33239/wheat-field-wheat-yellow-grain.jpg?auto=compress&cs=tinysrgb&w=200&h=200&dpr=2',
+          (product.images[0].image_url || 
+           (product.images[0].image?.startsWith('http') ? product.images[0].image : 
+            (product.images[0].image ? `http://localhost:8000${product.images[0].image}` : ''))) :
+          product.image_url || 'https://images.pexels.com/photos/33239/wheat-field-wheat-yellow-grain.jpg?auto=compress&cs=tinysrgb&w=200&h=200&dpr=2',
         // Formater les prix
         prix_vente: parseFloat(product.prix_vente) || 0,
-        // Calculer le stock actuel
-        stock_actuel: product.stocks?.reduce((total: number, stock: any) => total + stock.quantite_physique, 0) || 0,
+        // Utiliser le stock actuel directement de l'API (modèle simplifié)
+        stock_actuel: product.stock_actuel || product.stock || 0,
         // Utiliser le nom de la catégorie
-        categorie: product.categorie_nom || 'Non classé'
-      })) || [];
+        categorie: product.categorie_nom || product.categorie?.nom || 'Non classé'
+      }));
       
+      console.log('Produits transformés (POSPage):', transformedProducts.length);
       setProducts(transformedProducts);
     } catch (error) {
       console.error('Erreur lors du chargement des produits:', error);
@@ -311,17 +347,123 @@ const POSPage: React.FC = () => {
         total: calculateTotal(),
       });
       
-      // Simulation de traitement
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // S'assurer qu'un client est sélectionné ou créer un client anonyme
+      let clientId = selectedCustomer?.id;
+      
+      if (!clientId) {
+        // Créer un Client CRM anonyme pour la vente POS
+        try {
+          const timestamp = Date.now();
+          // Ne pas inclure code_client, il sera généré automatiquement par le backend
+          // Ne pas inclure entrepreneur, il sera ajouté automatiquement par perform_create
+          const anonymousClientData = {
+            nom: 'Client',
+            prenom: 'Anonyme',
+            email: `client.anonyme.${timestamp}@pos.local`,
+            telephone: '0000000000',
+            adresse_facturation: 'Vente POS - Adresse non spécifiée',
+            type_client: 'particulier',
+          };
+          
+          console.log('Création d\'un Client CRM anonyme pour la vente POS...');
+          const newClient = await apiService.createClient(anonymousClientData);
+          clientId = newClient.id || newClient.uuid;
+          console.log('Client CRM anonyme créé:', clientId);
+        } catch (clientError: any) {
+          console.error('Erreur lors de la création du client anonyme:', clientError);
+          // Si la création échoue, afficher une erreur
+          throw new Error('Impossible de créer un client pour la vente. Veuillez sélectionner un client existant.');
+        }
+      }
+      
+      // Créer la vente dans la base de données
+      const saleData = {
+        client: clientId,
+        lignes_data: cart.map(item => ({
+          produit: item.id,
+          quantite: item.quantite,
+          prix_unitaire: item.prix_vente,
+          remise_pourcentage: 0,
+          tva_taux: 18.00 // TVA par défaut
+        })),
+        sous_total: calculateSubtotal(),
+        taxe_montant: calculateTax(),
+        remise_montant: calculateDiscount(),
+        total_ttc: calculateTotal(),
+        mode_paiement: paymentMethod,
+        statut_paiement: 'completed', // Utiliser 'completed' au lieu de 'paid'
+        source_vente: 'pos',
+        notes: `Vente POS - ${new Date().toLocaleString()}`
+      };
+      
+      console.log('Données de vente:', saleData);
+      
+      // Créer la vente via l'API (le stock sera automatiquement décrémenté par le backend)
+      const saleResponse = await apiService.createSale(saleData);
+      console.log('Vente créée:', saleResponse);
       
       // Réinitialiser après succès
       clearCart();
       setShowPaymentModal(false);
       
-      // Notification de succès
-      alert(`Vente terminée ! Total: ${calculateTotal().toLocaleString()} XOF`);
-    } catch (error) {
+      // Notification de succès avec numéro de facture et option d'impression
+      const shouldPrint = window.confirm(
+        `Paiement traité avec succès !\n\nFacture: ${saleResponse.numero_facture}\nTotal: ${calculateTotal().toLocaleString()} XOF\n\nVoulez-vous ouvrir la page de facturation pour voir et imprimer cette facture ?`
+      );
+      
+      if (shouldPrint) {
+        // Naviguer vers la page de facturation
+        navigate('/entrepreneur/billing');
+      }
+      
+    } catch (error: any) {
       console.error('Erreur paiement:', error);
+      
+      let errorMessage = 'Erreur lors du traitement du paiement';
+      
+      // Extraire les détails de l'erreur
+      if (error.response?.data) {
+        const errorData = error.response.data;
+        
+        // Gérer les erreurs de validation Django REST Framework
+        if (errorData.stock_insuffisant) {
+          const stockErrors = Array.isArray(errorData.stock_insuffisant) 
+            ? errorData.stock_insuffisant 
+            : [errorData.stock_insuffisant];
+          errorMessage = `Stock insuffisant:\n${stockErrors.map((e: any) => 
+            `${e.produit}: Stock disponible: ${e.stock_disponible}, Quantité demandée: ${e.quantite_demandee}`
+          ).join('\n')}`;
+        } else if (errorData.lignes_data) {
+          if (Array.isArray(errorData.lignes_data)) {
+            errorMessage = `Erreur dans les lignes de vente:\n${errorData.lignes_data.map((e: any) => `Ligne ${e.ligne + 1}: ${e.erreur}`).join('\n')}`;
+          } else {
+            errorMessage = `Erreur lignes de vente: ${errorData.lignes_data}`;
+          }
+        } else if (errorData.non_field_errors) {
+          errorMessage = Array.isArray(errorData.non_field_errors) 
+            ? errorData.non_field_errors.join('\n')
+            : errorData.non_field_errors;
+        } else if (errorData.detail) {
+          errorMessage = errorData.detail;
+        } else if (errorData.message) {
+          errorMessage = errorData.message;
+        } else {
+          // Afficher toutes les erreurs de validation
+          const validationErrors = Object.entries(errorData)
+            .map(([key, value]: [string, any]) => {
+              if (Array.isArray(value)) {
+                return `${key}: ${value.join(', ')}`;
+              }
+              return `${key}: ${value}`;
+            })
+            .join('\n');
+          errorMessage = `Erreurs de validation:\n${validationErrors}`;
+        }
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      alert(errorMessage);
     } finally {
       setProcessing(false);
     }
@@ -375,11 +517,21 @@ const POSPage: React.FC = () => {
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
                 <span className="ml-2 text-gray-600">Chargement des produits...</span>
               </div>
+            ) : products.length === 0 ? (
+              <div className="col-span-full flex flex-col items-center justify-center py-12">
+                <Package className="w-16 h-16 text-gray-400 mb-4" />
+                <p className="text-gray-600 dark:text-gray-400 text-lg font-medium mb-2">
+                  Aucun produit trouvé
+                </p>
+                <p className="text-gray-500 dark:text-gray-500 text-sm">
+                  Les produits apparaîtront ici une fois créés
+                </p>
+              </div>
             ) : (
               products
                 .filter(product => 
                   product.nom.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                  product.sku.toLowerCase().includes(searchTerm.toLowerCase())
+                  product.sku?.toLowerCase().includes(searchTerm.toLowerCase())
                 )
                 .map((product, index) => (
                   <motion.div

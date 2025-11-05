@@ -143,10 +143,22 @@ class Vente(BaseModel):
         return f"Vente {self.numero_facture} - {self.client.nom}"
     
     def save(self, *args, **kwargs):
-        # Générer le numéro de facture automatiquement
+        # Générer le numéro de facture automatiquement seulement si pas déjà fourni
+        # Le serializer génère déjà le numéro dans une transaction pour éviter les doublons
         if not self.numero_facture:
+            from django.db import transaction
             from apps.core.utils import generate_invoice_number
-            self.numero_facture = generate_invoice_number(self.entrepreneur.entreprise_id)
+            
+            # Utiliser une transaction pour éviter les doublons
+            with transaction.atomic():
+                # Gérer le cas où l'entrepreneur n'a pas d'entreprise
+                entreprise_id = None
+                if self.entrepreneur and hasattr(self.entrepreneur, 'entreprise') and self.entrepreneur.entreprise:
+                    entreprise_id = self.entrepreneur.entreprise.id
+                elif self.entrepreneur and hasattr(self.entrepreneur, 'entreprise_id'):
+                    entreprise_id = self.entrepreneur.entreprise_id
+                
+                self.numero_facture = generate_invoice_number(entreprise_id)
         super().save(*args, **kwargs)
 
 
