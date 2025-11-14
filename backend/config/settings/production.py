@@ -181,8 +181,31 @@ CORS_ALLOWED_ORIGIN_REGEXES = [
 
 CORS_ALLOW_CREDENTIALS = True
 
+# Headers CORS supplémentaires
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
+
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
+
 # Debug: Afficher les origines CORS configurées
 print(f"[PRODUCTION] CORS_ALLOWED_ORIGINS: {CORS_ALLOWED_ORIGINS}")
+print(f"[PRODUCTION] CORS_ALLOWED_ORIGIN_REGEXES: {CORS_ALLOWED_ORIGIN_REGEXES}")
 
 # Redis Configuration - utiliser l'URL fournie par Render si disponible
 REDIS_URL = env('REDIS_URL', default='redis://localhost:6379/0')
