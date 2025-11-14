@@ -1,5 +1,5 @@
 import React from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import LoginPage from '../pages/auth/LoginPage';
 import TestLoginPage from '../pages/auth/TestLoginPage';
@@ -20,6 +20,7 @@ const AuthLayout: React.FC = () => {
         className="max-w-md w-full space-y-8"
       >
         <Routes>
+          <Route path="/" element={<Navigate to="/auth/login" replace />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
@@ -27,6 +28,7 @@ const AuthLayout: React.FC = () => {
           <Route path="/force-logout" element={<ForceLogout />} />
           <Route path="/reset" element={<ResetApp />} />
           <Route path="/diagnostic" element={<DiagnosticPage />} />
+          <Route path="*" element={<Navigate to="/auth/login" replace />} />
         </Routes>
       </motion.div>
     </div>
