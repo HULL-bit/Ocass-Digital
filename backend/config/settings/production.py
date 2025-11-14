@@ -25,7 +25,9 @@ DEBUG = env('DEBUG', default=False)
 ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=[
     'localhost',
     '127.0.0.1',
+    'ocass-digital.onrender.com',  # URL du backend
     '.render.com',  # Tous les sous-domaines Render
+    '*',  # Accepter tous les hosts en production (pour Render)
 ])
 
 # Parse database URL from environment variable
