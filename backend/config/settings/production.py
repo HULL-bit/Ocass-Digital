@@ -158,6 +158,9 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_HSTS_PRELOAD = True
 
 # CORS Configuration pour production
+# IMPORTANT: Le middleware CORS doit être en première position dans MIDDLEWARE
+# (déjà fait dans base.py)
+
 # Récupérer depuis l'environnement
 env_cors_origins = env.list('CORS_ALLOWED_ORIGINS', default=[])
 
@@ -175,13 +178,14 @@ default_cors_origins = [
 CORS_ALLOWED_ORIGINS = list(set(env_cors_origins + default_cors_origins))
 
 # Permettre aussi tous les sous-domaines Render (pour flexibilité)
+# Cette regex permet tous les domaines *.onrender.com
 CORS_ALLOWED_ORIGIN_REGEXES = [
     r"^https://.*\.onrender\.com$",
 ]
 
 CORS_ALLOW_CREDENTIALS = True
 
-# Headers CORS supplémentaires
+# Headers CORS supplémentaires - DOIT inclure tous les headers utilisés
 CORS_ALLOW_HEADERS = [
     'accept',
     'accept-encoding',
@@ -192,6 +196,8 @@ CORS_ALLOW_HEADERS = [
     'user-agent',
     'x-csrftoken',
     'x-requested-with',
+    'access-control-request-method',
+    'access-control-request-headers',
 ]
 
 CORS_ALLOW_METHODS = [
@@ -203,9 +209,23 @@ CORS_ALLOW_METHODS = [
     'PUT',
 ]
 
+# Exposer les headers CORS dans la réponse
+CORS_EXPOSE_HEADERS = [
+    'content-type',
+    'authorization',
+]
+
+# Préflight cache (en secondes) - 24 heures
+CORS_PREFLIGHT_MAX_AGE = 86400
+
 # Debug: Afficher les origines CORS configurées
+print("=" * 70)
+print("[PRODUCTION] CORS Configuration:")
 print(f"[PRODUCTION] CORS_ALLOWED_ORIGINS: {CORS_ALLOWED_ORIGINS}")
 print(f"[PRODUCTION] CORS_ALLOWED_ORIGIN_REGEXES: {CORS_ALLOWED_ORIGIN_REGEXES}")
+print(f"[PRODUCTION] CORS_ALLOW_CREDENTIALS: {CORS_ALLOW_CREDENTIALS}")
+print(f"[PRODUCTION] CORS_ALLOW_METHODS: {CORS_ALLOW_METHODS}")
+print("=" * 70)
 
 # Redis Configuration - utiliser l'URL fournie par Render si disponible
 REDIS_URL = env('REDIS_URL', default='redis://localhost:6379/0')
