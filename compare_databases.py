@@ -1,24 +1,34 @@
 #!/usr/bin/env python3
 """
-Script pour comparer les données entre la base locale et Render.
-"""
-import psycopg2
-from psycopg2.extras import RealDictCursor
-import getpass
+Script pour comparer les données entre la base locale et la base Render
+pour vérifier que toutes les données ont été exportées.
 
-# Configuration de la base de données locale
-LOCAL_DB_CONFIG = {
+Usage: python3 compare_databases.py [mot_de_passe_postgres_local]
+"""
+
+import psycopg2
+import sys
+import getpass
+from collections import defaultdict
+
+# Configuration base locale
+if len(sys.argv) > 1:
+    local_password = sys.argv[1]
+else:
+    local_password = getpass.getpass("Mot de passe PostgreSQL local: ")
+
+LOCAL_DB = {
     'host': 'localhost',
-    'port': '5432',
+    'port': 5432,
     'database': 'BaseMeoire',
     'user': 'postgres',
-    'password': None
+    'password': local_password
 }
 
-# Configuration de la base de données Render
-RENDER_DB_CONFIG = {
+# Configuration base Render
+RENDER_DB = {
     'host': 'dpg-d4big5umcj7s73fh8nq0-a.oregon-postgres.render.com',
-    'port': '5432',
+    'port': 5432,
     'database': 'commercial_platform_pro',
     'user': 'commercial_platform_pro_user',
     'password': 'cPS9UdVWB53U5ffKCkXXkeWCGp2Y9FWE',
@@ -26,156 +36,150 @@ RENDER_DB_CONFIG = {
 }
 
 def get_table_counts(conn, schema='public'):
-    """Récupérer le nombre d'enregistrements par table"""
-    cursor = conn.cursor(cursor_factory=RealDictCursor)
-    
-    # Récupérer toutes les tables
-    cursor.execute("""
-        SELECT table_name 
-        FROM information_schema.tables 
-        WHERE table_schema = %s
-        AND table_type = 'BASE TABLE'
-        ORDER BY table_name;
-    """, (schema,))
-    
-    tables = [row['table_name'] for row in cursor.fetchall()]
-    
+    """Récupère le nombre de lignes pour chaque table"""
     counts = {}
-    for table in tables:
-        try:
-            cursor.execute(f'SELECT COUNT(*) as count FROM "{table}";')
-            result = cursor.fetchone()
-            counts[table] = result['count'] if result else 0
-        except Exception as e:
-            counts[table] = f"ERROR: {str(e)}"
+    try:
+        with conn.cursor() as cur:
+            # Récupérer toutes les tables
+            cur.execute("""
+                SELECT table_name 
+                FROM information_schema.tables 
+                WHERE table_schema = %s 
+                AND table_type = 'BASE TABLE'
+                ORDER BY table_name
+            """, (schema,))
+            
+            tables = [row[0] for row in cur.fetchall()]
+            
+            for table in tables:
+                try:
+                    cur.execute(f'SELECT COUNT(*) FROM "{table}"')
+                    count = cur.fetchone()[0]
+                    counts[table] = count
+                except Exception as e:
+                    print(f"  ⚠️  Erreur pour {table}: {e}")
+                    counts[table] = -1
+    except Exception as e:
+        print(f"❌ Erreur lors de la récupération des tables: {e}")
     
-    cursor.close()
     return counts
 
-def compare_databases(local_password=None):
-    """Comparer les deux bases de données"""
+def compare_databases():
+    """Compare les deux bases de données"""
     print("=" * 70)
     print("COMPARAISON DES BASES DE DONNÉES")
     print("=" * 70)
+    print()
     
     # Connexion à la base locale
-    print("\n🔌 Connexion à la base locale...")
-    if not LOCAL_DB_CONFIG['password']:
-        if local_password:
-            LOCAL_DB_CONFIG['password'] = local_password
-        else:
-            try:
-                LOCAL_DB_CONFIG['password'] = getpass.getpass(f"Mot de passe pour {LOCAL_DB_CONFIG['user']}: ")
-            except:
-                print("⚠️  Impossible de demander le mot de passe interactivement.")
-                print("   Utilisez: python3 compare_databases.py <mot_de_passe_local>")
-                print("   Ou définissez la variable d'environnement: export PGPASSWORD=<mot_de_passe>")
-                return
-    
+    print("📊 Connexion à la base locale...")
     try:
-        local_conn = psycopg2.connect(**LOCAL_DB_CONFIG)
-        print("✅ Connexion locale réussie")
+        local_conn = psycopg2.connect(**{k: v for k, v in LOCAL_DB.items() if k != 'sslmode'})
+        print("✅ Connecté à la base locale")
     except Exception as e:
-        print(f"❌ Erreur de connexion locale: {e}")
+        print(f"❌ Erreur de connexion à la base locale: {e}")
         return
     
-    # Connexion à Render
-    print("🔌 Connexion à Render...")
+    # Connexion à la base Render
+    print("📊 Connexion à la base Render...")
     try:
-        render_conn = psycopg2.connect(**RENDER_DB_CONFIG)
-        print("✅ Connexion Render réussie")
+        render_conn = psycopg2.connect(**RENDER_DB)
+        print("✅ Connecté à la base Render")
     except Exception as e:
-        print(f"❌ Erreur de connexion Render: {e}")
+        print(f"❌ Erreur de connexion à la base Render: {e}")
         local_conn.close()
         return
     
+    print()
+    print("🔍 Récupération des comptages...")
+    print()
+    
     # Récupérer les comptages
-    print("\n📊 Comptage des enregistrements...")
-    print("   Base locale...")
     local_counts = get_table_counts(local_conn)
-    print("   Base Render...")
     render_counts = get_table_counts(render_conn)
     
+    # Fermer les connexions
+    local_conn.close()
+    render_conn.close()
+    
     # Comparer
-    print("\n" + "=" * 70)
+    print("=" * 70)
     print("RÉSULTATS DE LA COMPARAISON")
     print("=" * 70)
+    print()
     
     all_tables = set(local_counts.keys()) | set(render_counts.keys())
     
     differences = []
     matches = []
-    missing_in_render = []
-    missing_in_local = []
+    missing_local = []
+    missing_render = []
     
     for table in sorted(all_tables):
         local_count = local_counts.get(table, 0)
         render_count = render_counts.get(table, 0)
         
-        if isinstance(local_count, str) or isinstance(render_count, str):
-            status = "⚠️  ERREUR"
-            differences.append((table, local_count, render_count, status))
-        elif local_count != render_count:
-            status = "❌ DIFFÉRENT"
-            differences.append((table, local_count, render_count, status))
-        else:
-            status = "✅ IDENTIQUE"
-            matches.append((table, local_count))
-        
-        if table not in render_counts:
-            missing_in_render.append(table)
         if table not in local_counts:
-            missing_in_local.append(table)
+            missing_local.append((table, render_count))
+        elif table not in render_counts:
+            missing_render.append((table, local_count))
+        elif local_count != render_count:
+            differences.append((table, local_count, render_count))
+        else:
+            matches.append((table, local_count))
     
     # Afficher les résultats
-    print(f"\n✅ Tables identiques: {len(matches)}")
     if matches:
-        print("\n   Tables avec données identiques:")
+        print(f"✅ {len(matches)} tables identiques:")
         for table, count in matches[:10]:  # Afficher les 10 premières
-            print(f"      - {table}: {count} enregistrements")
+            print(f"   {table}: {count} lignes")
         if len(matches) > 10:
-            print(f"      ... et {len(matches) - 10} autres")
+            print(f"   ... et {len(matches) - 10} autres tables")
+        print()
     
-    print(f"\n❌ Tables différentes: {len(differences)}")
     if differences:
-        print("\n   Tables avec différences:")
-        print(f"   {'Table':<40} {'Locale':<15} {'Render':<15} {'Status'}")
-        print("   " + "-" * 85)
-        for table, local, render, status in differences:
-            print(f"   {table:<40} {str(local):<15} {str(render):<15} {status}")
+        print(f"⚠️  {len(differences)} tables avec des différences:")
+        for table, local_count, render_count in differences:
+            diff = render_count - local_count
+            status = "✅" if diff >= 0 else "❌"
+            print(f"   {status} {table}:")
+            print(f"      Local: {local_count} lignes")
+            print(f"      Render: {render_count} lignes")
+            print(f"      Différence: {diff:+d} lignes")
+        print()
     
-    if missing_in_render:
-        print(f"\n⚠️  Tables manquantes dans Render: {len(missing_in_render)}")
-        for table in missing_in_render:
-            print(f"      - {table}")
+    if missing_render:
+        print(f"❌ {len(missing_render)} tables manquantes dans Render:")
+        for table, count in missing_render:
+            print(f"   {table}: {count} lignes (local uniquement)")
+        print()
     
-    if missing_in_local:
-        print(f"\n⚠️  Tables manquantes dans la base locale: {len(missing_in_local)}")
-        for table in missing_in_local:
-            print(f"      - {table}")
+    if missing_local:
+        print(f"ℹ️  {len(missing_local)} tables présentes uniquement dans Render:")
+        for table, count in missing_local:
+            print(f"   {table}: {count} lignes")
+        print()
     
     # Résumé
-    print("\n" + "=" * 70)
+    print("=" * 70)
     print("RÉSUMÉ")
     print("=" * 70)
-    total_local = sum(c for c in local_counts.values() if isinstance(c, int))
-    total_render = sum(c for c in render_counts.values() if isinstance(c, int))
+    print(f"Total tables locales: {len(local_counts)}")
+    print(f"Total tables Render: {len(render_counts)}")
+    print(f"Tables identiques: {len(matches)}")
+    print(f"Tables avec différences: {len(differences)}")
+    print(f"Tables manquantes dans Render: {len(missing_render)}")
+    print()
     
-    print(f"Total enregistrements (locale):  {total_local:,}")
-    print(f"Total enregistrements (Render):  {total_render:,}")
-    print(f"Différence:                       {total_local - total_render:,}")
-    
-    if len(differences) == 0 and len(missing_in_render) == 0:
-        print("\n✅ TOUTES LES DONNÉES SONT IDENTIQUES!")
+    if not differences and not missing_render:
+        print("✅ TOUTES LES DONNÉES ONT ÉTÉ EXPORTÉES AVEC SUCCÈS!")
+    elif len(differences) == 0 and len(missing_render) == 0:
+        print("✅ Toutes les tables sont présentes, mais certaines ont des différences de comptage.")
+        print("   Cela peut être normal si des données ont été ajoutées/supprimées après l'export.")
     else:
-        print("\n⚠️  Il y a des différences. Vous devriez exporter les données.")
+        print("⚠️  Certaines données peuvent manquer. Vérifiez les détails ci-dessus.")
     
-    # Fermer les connexions
-    local_conn.close()
-    render_conn.close()
+    print()
 
 if __name__ == '__main__':
-    import sys
-    local_password = sys.argv[1] if len(sys.argv) > 1 else None
-    compare_databases(local_password)
-
+    compare_databases()

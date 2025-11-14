@@ -727,7 +727,7 @@ class DashboardApiService {
   private async getRealSystemHealth() {
     try {
       // Vérifier la santé de l'API
-      const healthCheck = await apiService.request('/api/v1/core/health/');
+      const healthCheck = await apiService.request('/core/health/');
       
       const systemHealth = [
         {

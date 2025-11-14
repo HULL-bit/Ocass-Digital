@@ -250,7 +250,7 @@ const DashboardMetrics: React.FC<DashboardMetricsProps> = ({ userRole }) => {
     
     // Retourner un tableau vide si pas de données API
     return [];
-  }, [stableMetrics, metrics, userRole]);
+  }, [stableMetrics, metrics, userRole]); // Dépendances stables
 
 
   return (

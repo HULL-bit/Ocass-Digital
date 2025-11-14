@@ -402,14 +402,17 @@ const CatalogPage: React.FC = () => {
         }
         
         // VÉRIFIER QU'IL Y A AU MOINS UNE IMAGE RÉELLE
+        // Ne pas filtrer par image pour l'instant - afficher tous les produits visibles
+        // Les images seront gérées par getProductImageFromPublic avec fallback
         const hasRealImage = 
           (product.images && Array.isArray(product.images) && product.images.length > 0) ||
           (product.image && typeof product.image === 'string' && product.image.trim() !== '');
         
-        if (!hasRealImage) {
-          console.warn(`⚠️ Produit "${product.nom}" (ID: ${product.id}) ignoré: pas d'image réelle`);
-          return false;
-        }
+        // Ne pas filtrer par image - permettre l'affichage même sans image
+        // if (!hasRealImage) {
+        //   console.warn(`⚠️ Produit "${product.nom}" (ID: ${product.id}) ignoré: pas d'image réelle`);
+        //   return false;
+        // }
         
         return true;
       });
@@ -444,20 +447,8 @@ const CatalogPage: React.FC = () => {
       console.log(`🏢 Mapping des entreprises créé: ${companyMap.size} entreprises`);
       
       // Transformer les données pour correspondre au format attendu
-      // FILTRER les produits qui n'ont PAS d'images réelles
+      // Ne pas filtrer par image - afficher tous les produits visibles
       let transformedProducts = uniqueProducts
-        .filter((product: any) => {
-          // Vérifier si le produit a au moins une image réelle
-          const hasRealImage = 
-            (product.images && Array.isArray(product.images) && product.images.length > 0) ||
-            (product.image && typeof product.image === 'string' && product.image.trim() !== '');
-          
-          if (!hasRealImage) {
-            console.warn(`⚠️ Produit "${product.nom}" (ID: ${product.id}) ignoré: pas d'image réelle`);
-            return false;
-          }
-          return true;
-        })
         .map((product: any) => {
 
         const categoryName = product.categorie?.nom || product.categorie_nom || 'Autre';
