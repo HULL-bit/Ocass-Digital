@@ -9,12 +9,15 @@
 - **Region:** `Oregon (US West)` (ou la région de votre base de données)
 - **Root Directory:** `backend`
 
-### Build Command
+### Build Command (Minimal et fonctionnel)
 ```bash
-pip install --upgrade pip setuptools wheel && pip install -r requirements/base.txt && pip install dj-database-url && python manage.py collectstatic --noinput && python manage.py migrate --noinput --fake-initial
+cd backend && pip install --upgrade pip setuptools wheel && pip install -r requirements/base.txt && pip install dj-database-url && python manage.py collectstatic --noinput && python manage.py migrate --noinput --fake-initial
 ```
 
-**Note :** `--fake-initial` permet d'ignorer les migrations initiales si les tables existent déjà (utile après import de données).
+**Notes importantes :**
+- `setuptools wheel` : Nécessaire pour compiler certains packages (Pillow)
+- `requirements/base.txt` uniquement : Pas besoin de `development.txt` en production
+- `--fake-initial` : Ignore les migrations initiales si les tables existent déjà (après import de données)
 
 **Note :** Ajout de `setuptools wheel` pour résoudre les problèmes de compilation de packages comme Pillow.
 
@@ -25,10 +28,15 @@ pip install --upgrade pip setuptools wheel && pip install -r requirements/base.t
 - Collecte les fichiers statiques
 - Exécute les migrations
 
-### Start Command
+### Start Command (Minimal et fonctionnel)
 ```bash
-gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 4 --timeout 120
+cd backend && gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 120
 ```
+
+**Notes :**
+- `cd backend` : Nécessaire si Root Directory n'est pas défini
+- `workers 2` : Minimum pour production (augmentez selon votre plan Render)
+- `timeout 120` : Timeout de 120 secondes pour les requêtes longues
 
 **Explication:**
 - `config.wsgi:application` - Point d'entrée WSGI (pas `your_application.wsgi`)

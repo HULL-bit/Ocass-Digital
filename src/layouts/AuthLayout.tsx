@@ -20,14 +20,14 @@ const AuthLayout: React.FC = () => {
         className="max-w-md w-full space-y-8"
       >
         <Routes>
-          <Route path="/" element={<Navigate to="/auth/login" replace />} />
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/register" element={<RegisterPage />} />
-          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-          <Route path="/unauthorized" element={<UnauthorizedPage />} />
-          <Route path="/force-logout" element={<ForceLogout />} />
-          <Route path="/reset" element={<ResetApp />} />
-          <Route path="/diagnostic" element={<DiagnosticPage />} />
+          <Route index element={<Navigate to="/auth/login" replace />} />
+          <Route path="login" element={<LoginPage />} />
+          <Route path="register" element={<RegisterPage />} />
+          <Route path="forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="unauthorized" element={<UnauthorizedPage />} />
+          <Route path="force-logout" element={<ForceLogout />} />
+          <Route path="reset" element={<ResetApp />} />
+          <Route path="diagnostic" element={<DiagnosticPage />} />
           <Route path="*" element={<Navigate to="/auth/login" replace />} />
         </Routes>
       </motion.div>
