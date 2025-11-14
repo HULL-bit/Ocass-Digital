@@ -235,27 +235,37 @@ print(f"[PRODUCTION] REDIS_URL: {REDIS_URL}")
 
 # Override CACHES pour utiliser Redis de Render
 # S'assurer que CACHES utilise bien REDIS_URL et non localhost
-CACHES = {
-    'default': {
-        'BACKEND': 'django_redis.cache.RedisCache',
-        'LOCATION': REDIS_URL,
-        'OPTIONS': {
-            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-            'SERIALIZER': 'django_redis.serializers.json.JSONSerializer',
-            'COMPRESSOR': 'django_redis.compressors.zlib.ZlibCompressor',
-            # Options de connexion pour éviter les erreurs
-            'CONNECTION_POOL_KWARGS': {
-                'retry_on_timeout': True,
-                'socket_connect_timeout': 5,
-                'socket_timeout': 5,
-            },
-            # Ignorer les erreurs de connexion pour le cache
-            'IGNORE_EXCEPTIONS': True,
-        },
-        'KEY_PREFIX': 'commercial_platform',
-        'TIMEOUT': 300,
+# Si REDIS_URL contient localhost, utiliser un cache en mémoire comme fallback
+if 'localhost' in REDIS_URL or '127.0.0.1' in REDIS_URL:
+    print("[PRODUCTION] ⚠️ REDIS_URL contient localhost, utilisation du cache en mémoire")
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'unique-snowflake',
+        }
     }
-}
+else:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django_redis.cache.RedisCache',
+            'LOCATION': REDIS_URL,
+            'OPTIONS': {
+                'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+                'SERIALIZER': 'django_redis.serializers.json.JSONSerializer',
+                'COMPRESSOR': 'django_redis.compressors.zlib.ZlibCompressor',
+                # Options de connexion pour éviter les erreurs
+                'CONNECTION_POOL_KWARGS': {
+                    'retry_on_timeout': True,
+                    'socket_connect_timeout': 5,
+                    'socket_timeout': 5,
+                },
+                # Ignorer les erreurs de connexion pour le cache
+                'IGNORE_EXCEPTIONS': True,
+            },
+            'KEY_PREFIX': 'commercial_platform',
+            'TIMEOUT': 300,
+        }
+    }
 
 # Override CHANNEL_LAYERS pour utiliser Redis de Render
 # Parser l'URL Redis pour Channels
