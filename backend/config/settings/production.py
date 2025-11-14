@@ -158,8 +158,31 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_HSTS_PRELOAD = True
 
 # CORS Configuration pour production
-CORS_ALLOWED_ORIGINS = env.list('CORS_ALLOWED_ORIGINS', default=[])
+# Récupérer depuis l'environnement
+env_cors_origins = env.list('CORS_ALLOWED_ORIGINS', default=[])
+
+# Ajouter les origines par défaut pour Render
+default_cors_origins = [
+    'https://ocass-digital-j97l.onrender.com',
+    'https://commercial-platform-frontend.onrender.com',
+    'http://localhost:5173',
+    'http://localhost:3000',
+    'http://127.0.0.1:5173',
+    'http://127.0.0.1:3000',
+]
+
+# Combiner les origines de l'environnement avec les defaults
+CORS_ALLOWED_ORIGINS = list(set(env_cors_origins + default_cors_origins))
+
+# Permettre aussi tous les sous-domaines Render (pour flexibilité)
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https://.*\.onrender\.com$",
+]
+
 CORS_ALLOW_CREDENTIALS = True
+
+# Debug: Afficher les origines CORS configurées
+print(f"[PRODUCTION] CORS_ALLOWED_ORIGINS: {CORS_ALLOWED_ORIGINS}")
 
 # Redis Configuration - utiliser l'URL fournie par Render si disponible
 REDIS_URL = env('REDIS_URL', default='redis://localhost:6379/0')
