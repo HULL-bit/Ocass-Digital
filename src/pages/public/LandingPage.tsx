@@ -196,7 +196,14 @@ const LandingPage: React.FC = () => {
               </p>
               <div className="mt-10 flex items-center justify-center gap-4">
                 <button
-                  onClick={() => navigate(heroSlides[activeSlide].cta.href)}
+                  onClick={() => {
+                    const href = heroSlides[activeSlide]?.cta?.href;
+                    if (typeof href === 'string') {
+                      navigate(href);
+                    } else {
+                      console.error('Invalid href:', href);
+                    }
+                  }}
                   className="inline-flex items-center gap-2 px-6 py-3 rounded-full font-semibold bg-white text-dark-900 hover:bg-gray-100 transition shadow-[0_1px_0_0_rgba(0,0,0,0.05)]"
                 >
                   {heroSlides[activeSlide].cta.label}
