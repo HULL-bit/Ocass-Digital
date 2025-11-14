@@ -24,6 +24,7 @@ import Button from '../../components/ui/Button';
 import AnimatedForm from '../../components/forms/AnimatedForm';
 import apiService from '../../services/api/realApi';
 import { useAuth } from '../../contexts/AuthContext';
+import { getProductImageFromPublic } from '../../utils/publicProductImages';
 import * as yup from 'yup';
 
 const POSPage: React.FC = () => {
@@ -81,12 +82,17 @@ const POSPage: React.FC = () => {
       // Transformer les données pour correspondre au format attendu
       const transformedProducts = productsData.map((product: any) => ({
         ...product,
-        // Utiliser la première image disponible ou une image par défaut
-        image: product.images && product.images.length > 0 ? 
-          (product.images[0].image_url || 
-           (product.images[0].image?.startsWith('http') ? product.images[0].image : 
-            (product.images[0].image ? `http://localhost:8000${product.images[0].image}` : ''))) :
-          product.image_url || 'https://images.pexels.com/photos/33239/wheat-field-wheat-yellow-grain.jpg?auto=compress&cs=tinysrgb&w=200&h=200&dpr=2',
+        // Utiliser la fonction utilitaire qui gère les images de l'API ET les images dans public/
+        image: getProductImageFromPublic({
+          nom: product.nom,
+          name: product.name,
+          categorie: product.categorie,
+          categorie_nom: product.categorie_nom,
+          images: product.images,
+          image: product.image,
+          image_url: product.image_url,
+          id: product.id
+        }),
         // Formater les prix
         prix_vente: parseFloat(product.prix_vente) || 0,
         // Utiliser le stock actuel directement de l'API (modèle simplifié)

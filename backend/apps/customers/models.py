@@ -154,7 +154,11 @@ class Client(BaseModel):
         return self.nom
     
     def save(self, *args, **kwargs):
-        """Générer automatiquement le code_client s'il n'est pas fourni."""
+        """Générer automatiquement le code_client s'il n'est pas fourni et normaliser l'email."""
+        # Normaliser l'email (lowercase et strip)
+        if self.email:
+            self.email = self.email.lower().strip()
+        
         if not self.code_client:
             import uuid
             # Générer un code unique basé sur l'UUID

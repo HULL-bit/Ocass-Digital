@@ -332,6 +332,8 @@ class Produit(BaseModel):
             models.Index(fields=['code_barre']),
             models.Index(fields=['popularite_score']),
             models.Index(fields=['en_promotion', 'date_fin_promotion']),
+            # Index composite pour ultra_fast_list (requête la plus fréquente)
+            models.Index(fields=['visible_catalogue', 'statut', 'date_creation']),
         ]
         ordering = ['-date_creation']
     

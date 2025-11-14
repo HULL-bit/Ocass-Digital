@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Target, 
@@ -30,12 +30,56 @@ import AnimatedForm from '../../components/forms/AnimatedForm';
 import apiService from '../../services/api/realApi';
 import * as yup from 'yup';
 import { getAvatarWithFallback } from '../../utils/avatarUtils';
+import { useAuth } from '../../contexts/AuthContext';
+import { useNotifications } from '../../contexts/NotificationContext';
 
 const ProjectsPage: React.FC = () => {
+  const { user } = useAuth();
+  const { addNotification } = useNotifications();
   const [selectedTab, setSelectedTab] = useState('all');
   const [selectedProject, setSelectedProject] = useState<any>(null);
   const [showProjectForm, setShowProjectForm] = useState(false);
   const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban');
+  const [clients, setClients] = useState<any[]>([]);
+  const [loadingClients, setLoadingClients] = useState(false);
+  const [loadingProjects, setLoadingProjects] = useState(false);
+
+  // Charger les clients au montage du composant
+  useEffect(() => {
+    loadClients();
+    loadProjects();
+  }, []);
+
+  const loadClients = async () => {
+    try {
+      setLoadingClients(true);
+      const response = await apiService.request('/customers/clients/');
+      const clientsList = response.results || response || [];
+      setClients(clientsList);
+    } catch (error) {
+      console.error('Erreur lors du chargement des clients:', error);
+      addNotification({
+        type: 'error',
+        title: 'Erreur',
+        message: 'Impossible de charger la liste des clients',
+      });
+    } finally {
+      setLoadingClients(false);
+    }
+  };
+
+  const loadProjects = async () => {
+    try {
+      setLoadingProjects(true);
+      const response = await apiService.getProjects();
+      const projectsList = response.results || response || [];
+      setProjects(projectsList);
+    } catch (error) {
+      console.error('Erreur lors du chargement des projets:', error);
+    } finally {
+      setLoadingProjects(false);
+    }
+  };
 
   // Données réelles des projets (remplacées par l'API)
   const [projects, setProjects] = useState([
@@ -181,6 +225,21 @@ const ProjectsPage: React.FC = () => {
     budget_prevu: yup.number().required('Le budget est requis').min(0, 'Le budget doit être positif'),
     priorite: yup.string().required('La priorité est requise'),
   });
+  
+  // Générer un code projet unique
+  const generateProjectCode = async () => {
+    try {
+      const existingProjects = await apiService.getProjects();
+      const projectsList = existingProjects.results || existingProjects || [];
+      const count = projectsList.length + 1;
+      return `PROJ-${String(count).padStart(3, '0')}`;
+    } catch (error) {
+      // En cas d'erreur, utiliser un code basé sur la date
+      const now = new Date();
+      const timestamp = now.getTime().toString().slice(-6);
+      return `PROJ-${timestamp}`;
+    }
+  };
 
   const projectFormFields = [
     {
@@ -201,11 +260,14 @@ const ProjectsPage: React.FC = () => {
       name: 'client_id',
       label: 'Client',
       type: 'select' as const,
-      options: [
-        { label: 'Aminata Diop - Salon de Beauté', value: '1' },
-        { label: 'Dr. Fatou Sow - Pharmacie Moderne', value: '2' },
-        { label: 'Moussa Ndiaye - Restaurant Baobab', value: '3' },
-      ],
+      options: loadingClients 
+        ? [{ label: 'Chargement...', value: '' }]
+        : clients.length > 0
+        ? clients.map((client: any) => ({
+            label: `${client.prenom || ''} ${client.nom || ''}${client.entreprise ? ` - ${client.entreprise}` : ''}`.trim() || client.email || `Client ${client.id}`,
+            value: String(client.id),
+          }))
+        : [{ label: 'Aucun client disponible', value: '' }],
       icon: <Users className="w-4 h-4" />,
     },
     {
@@ -290,17 +352,21 @@ const ProjectsPage: React.FC = () => {
     try {
       console.log('Création du projet:', data);
       
-      // Préparer les données pour l'API
+      // Générer un code projet unique
+      const code_projet = await generateProjectCode();
+      
+      // Préparer les données pour l'API selon le modèle backend
       const projectData = {
         nom: data.nom,
         description: data.description || '',
-        client_id: data.client_id || null,
-        date_debut: data.date_debut || new Date().toISOString(),
+        code_projet: code_projet,
+        client: data.client_id, // Le backend attend 'client' pas 'client_id'
+        responsable: user?.id, // Utiliser l'utilisateur connecté comme responsable
+        date_debut: data.date_debut || new Date().toISOString().split('T')[0],
         date_fin_prevue: data.date_fin_prevue || null,
-        budget: parseFloat(data.budget) || 0,
+        budget_prevu: parseFloat(data.budget_prevu) || 0,
         statut: data.statut || 'planifie',
-        priorite: data.priorite || 'moyenne',
-        tags: data.tags || [],
+        priorite: data.priorite || 'medium',
         notes: data.notes || ''
       };
 
@@ -308,11 +374,27 @@ const ProjectsPage: React.FC = () => {
       const response = await apiService.createProject(projectData);
       console.log('Projet créé avec succès:', response);
       
+      // Afficher une notification de succès
+      addNotification({
+        type: 'success',
+        title: 'Succès',
+        message: 'Le projet a été créé avec succès',
+      });
+      
+      // Rafraîchir la liste des projets
+      await loadProjects();
+      
       // Fermer le formulaire
       setShowProjectForm(false);
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erreur lors de la création du projet:', error);
+      const errorMessage = error?.response?.data?.detail || error?.message || 'Erreur lors de la création du projet';
+      addNotification({
+        type: 'error',
+        title: 'Erreur',
+        message: errorMessage,
+      });
     }
   };
 

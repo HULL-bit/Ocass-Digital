@@ -111,7 +111,11 @@ class EntrepreneurApiService {
     try {
       const response = await apiService.getSales();
       return response.results || response || [];
-    } catch (error) {
+    } catch (error: any) {
+      // Ignorer les erreurs 401 (non authentifié) - c'est normal pour les utilisateurs non connectés
+      if (error?.status === 401 || error?.response?.status === 401) {
+        return [];
+      }
       console.error('Erreur lors du chargement des ventes:', error);
       return [];
     }

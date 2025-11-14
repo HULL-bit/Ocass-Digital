@@ -1,7 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 import apiService from '../../services/api/realApi';
 import useCart from '../../hooks/useCart';
+import { useNotifications } from '../../contexts/NotificationContext';
+import CartService from '../../services/cart/CartService';
 import { 
   ShoppingCart, 
   Plus, 
@@ -27,6 +30,8 @@ import {
 import Button from '../../components/ui/Button';
 
 const CartPage: React.FC = () => {
+  const navigate = useNavigate();
+  const { addNotification } = useNotifications();
   // Utiliser le hook du panier
   const { 
     cartItems, 
@@ -35,6 +40,41 @@ const CartPage: React.FC = () => {
     removeFromCart, 
     clearCart 
   } = useCart();
+  
+  // Supprimer tous les produits mock au chargement de la page
+  useEffect(() => {
+    // Nettoyer le localStorage directement aussi
+    try {
+      const savedCart = localStorage.getItem('cart');
+      if (savedCart) {
+        const cartData = JSON.parse(savedCart);
+        const validCart = cartData.filter((item: any) => {
+          const productId = item.id || item.product?.id || '';
+          const productIdStr = String(productId).trim();
+          return !productIdStr.toLowerCase().startsWith('mock-');
+        });
+        
+        if (validCart.length < cartData.length) {
+          localStorage.setItem('cart', JSON.stringify(validCart));
+          console.log(`🧹 ${cartData.length - validCart.length} produit(s) mock supprimé(s) du localStorage`);
+        }
+      }
+    } catch (error) {
+      console.error('Erreur lors du nettoyage du localStorage:', error);
+    }
+    
+    // Utiliser le service pour nettoyer aussi
+    const cartService = CartService.getInstance();
+    const removedCount = cartService.removeMockProducts();
+    if (removedCount > 0) {
+      console.log(`🧹 ${removedCount} produit(s) mock supprimé(s) automatiquement`);
+      addNotification({
+        type: 'info',
+        title: 'Panier nettoyé',
+        message: `${removedCount} produit(s) de démonstration ont été retirés de votre panier.`,
+      });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   
   // Protection contre les valeurs undefined
   const safeCartSummary = cartSummary || {
@@ -45,6 +85,49 @@ const CartPage: React.FC = () => {
     shipping: 0,
     total: 0
   };
+
+  // Transformer les items du panier pour l'affichage (FILTRER les produits mock)
+  const displayItems = useMemo(() => {
+    return cartItems
+      .filter(item => {
+        const productId = item.id || item.product?.id || '';
+        const productIdStr = String(productId).trim();
+        const isMock = productIdStr.toLowerCase().startsWith('mock-');
+        if (isMock) {
+          console.warn('⚠️ Produit mock détecté dans displayItems, filtré:', productIdStr);
+        }
+        return !isMock;
+      })
+      .map(item => {
+      const product = item.product || {};
+      return {
+        id: item.id, // ID de l'item du panier
+        product: product, // Garder l'objet product complet pour récupérer l'ID du produit
+        name: product.name || product.nom || 'Produit sans nom',
+        description: product.description_courte || product.description || 'Aucune description',
+        image: product.image || (product.images && product.images.length > 0 ? 
+          (product.images[0].image_url || 
+           (product.images[0].image?.startsWith('http') ? product.images[0].image : 
+            (product.images[0].image ? `http://localhost:8000${product.images[0].image}` : ''))) : 
+          'https://images.unsplash.com/photo-1557683316-973673baf926?q=80&w=200&auto=format&fit=crop'),
+        price: item.price || parseFloat(product.prix_vente || product.price || '0'),
+        originalPrice: item.originalPrice || parseFloat(product.prix_achat || product.originalPrice || '0'),
+        quantity: item.quantity,
+        selectedColor: item.selectedColor,
+        selectedSize: item.selectedSize,
+        seller: {
+          name: product.entreprise_nom || product.entreprise?.nom || 'Vendeur inconnu',
+          verified: true,
+          rating: 4.5
+        },
+        shipping: {
+          free: (item.price * item.quantity) > 50000,
+          cost: (item.price * item.quantity) > 50000 ? 0 : 2500,
+          time: '24-48h'
+        }
+      };
+    });
+  }, [cartItems]);
   
   const [loading, setLoading] = useState(false);
   const [promoCode, setPromoCode] = useState('');
@@ -85,7 +168,7 @@ const CartPage: React.FC = () => {
 
   const moveToWishlist = (itemId: string) => {
     console.log('Move to wishlist:', itemId);
-    removeItem(itemId);
+    removeFromCart(itemId);
   };
 
   const applyPromoCode = () => {
@@ -107,6 +190,12 @@ const CartPage: React.FC = () => {
   const calculateSubtotal = () => safeCartSummary.subtotal;
   const calculateSavings = () => safeCartSummary.totalSavings;
   const calculateShipping = () => safeCartSummary.shipping;
+  
+  const calculateTax = () => {
+    // Calculer la TVA (18% par défaut)
+    const subtotal = calculateSubtotal() - calculatePromoDiscount();
+    return subtotal * 0.18;
+  };
 
   const calculatePromoDiscount = () => {
     if (!appliedPromo) return 0;
@@ -119,7 +208,7 @@ const CartPage: React.FC = () => {
   };
 
   const calculateTotal = () => {
-    return calculateSubtotal() + calculateShipping() - calculatePromoDiscount();
+    return calculateSubtotal() + calculateTax() + calculateShipping() - calculatePromoDiscount();
   };
 
   const loyaltyPointsEarned = Math.floor(calculateTotal() / 1000);
@@ -170,7 +259,7 @@ const CartPage: React.FC = () => {
           {/* Cart Items */}
           <div className="lg:col-span-2 space-y-4">
             <AnimatePresence>
-              {cartItems.map((item, index) => (
+              {displayItems.map((item, index) => (
                 <motion.div
                   key={item.id}
                   layout
@@ -556,7 +645,7 @@ const CartPage: React.FC = () => {
                   <div className="grid grid-cols-2 gap-3">
                     {[
                       { id: 'wave', name: 'Wave Money', icon: '📱', popular: true },
-                      { id: 'orange', name: 'Orange Money', icon: '🟠', popular: true },
+                      { id: 'orange_money', name: 'Orange Money', icon: '🟠', popular: true },
                       { id: 'card', name: 'Carte Bancaire', icon: '💳', popular: false },
                       { id: 'cash', name: 'Paiement à la Livraison', icon: '💵', popular: false },
                     ].map((method) => (
@@ -636,30 +725,299 @@ const CartPage: React.FC = () => {
                     icon={<CheckCircle className="w-4 h-4" />}
                     onClick={async () => {
                       try {
-                        // Créer une commande via l'API
-                        const orderData = {
-                          items: cartItems.map(item => ({
-                            product_id: item.id,
-                            quantity: item.quantity,
-                            price: item.price
-                          })),
-                          total: calculateTotal(),
-                          discount: appliedPromo ? appliedPromo.discount : 0,
-                          promo_code: appliedPromo ? appliedPromo.code : null,
-                          shipping_address: shippingAddress,
-                          payment_method: selectedPaymentMethod
+                        // Vérifier que le panier n'est pas vide
+                        if (displayItems.length === 0) {
+                          alert('Votre panier est vide. Veuillez ajouter des produits avant de finaliser la commande.');
+                          return;
+                        }
+
+
+                        // Vérifier que tous les items ont un ID de produit valide
+                        const invalidBasicItems = displayItems.filter(item => !item.id || !item.price || item.quantity <= 0);
+                        if (invalidBasicItems.length > 0) {
+                          console.error('Items invalides:', invalidBasicItems);
+                          alert('Certains produits dans votre panier sont invalides. Veuillez réessayer.');
+                          return;
+                        }
+
+                        // Récupérer l'adresse complète à partir de l'ID sélectionné
+                        const selectedAddressData = addresses.find(addr => addr.id === selectedAddress) || addresses[0];
+                        const shippingAddress = selectedAddressData ? {
+                          name: selectedAddressData.name,
+                          address: selectedAddressData.address,
+                          phone: selectedAddressData.phone
+                        } : null;
+                        
+                        // Utiliser tous les produits du panier sans validation
+                        // Le backend validera si les produits existent vraiment
+                        console.log('🛒 Préparation des lignes de commande...');
+                        console.log('🛒 Nombre d\'items dans le panier:', displayItems.length);
+                        
+                        const lignesData = displayItems.map((item, index) => {
+                          const product = item.product || {};
+                          
+                          console.log(`📦 Item ${index + 1}:`, {
+                            itemId: item.id,
+                            productId: product.id,
+                            name: item.name || product.nom,
+                            price: item.price,
+                            quantity: item.quantity
+                          });
+                          
+                          // item.id est l'ID du produit (selon CartService)
+                          // Mais on peut aussi utiliser product.id comme fallback
+                          const productId = item.id || product.id || product.uuid || product.pk;
+                          
+                          // S'assurer que productId existe
+                          if (!productId) {
+                            console.error(`❌ Produit invalide à l'index ${index}:`, {
+                              item,
+                              product,
+                              itemId: item.id,
+                              productId: product.id
+                            });
+                            throw new Error(`Produit invalide: ${item.name || 'Produit sans nom'}. Veuillez retirer cet article du panier et réessayer.`);
+                          }
+                          
+                          // Rejeter les produits mock (commençant par "mock-")
+                          const productIdStr = String(productId).trim();
+                          if (productIdStr.toLowerCase().startsWith('mock-')) {
+                            console.error(`❌ Produit mock détecté à l'index ${index}:`, {
+                              productId: productIdStr,
+                              name: item.name || product.nom
+                            });
+                            throw new Error(`Le produit "${item.name || 'Produit sans nom'}" est un produit de démonstration et ne peut pas être commandé. Veuillez le retirer de votre panier.`);
+                          }
+                          
+                          console.log(`✅ Produit ${index + 1} valide, ID: ${productId}`);
+                          
+                          // Convertir en nombres (pas de chaînes) pour les valeurs numériques
+                          const prixUnitaire = Number(parseFloat(String(item.price || product.prix_vente || product.price || '0')));
+                          const quantite = Number(parseInt(String(item.quantity || 1), 10));
+                          const remisePourcentage = Number(0);
+                          const tvaTaux = Number(18.00);
+                          
+                          if (isNaN(prixUnitaire) || prixUnitaire <= 0) {
+                            throw new Error(`Prix invalide pour le produit: ${item.name || 'Produit sans nom'}`);
+                          }
+                          
+                          if (isNaN(quantite) || quantite <= 0) {
+                            throw new Error(`Quantité invalide pour le produit: ${item.name || 'Produit sans nom'}`);
+                          }
+                          
+                          // L'ID du produit peut être un nombre ou une chaîne (UUID)
+                          // Le backend Django REST Framework accepte les deux
+                          const produitId = typeof productId === 'number' ? productId : String(productId);
+                          
+                          // Retourner un objet avec des valeurs correctement typées
+                          return {
+                            produit: produitId,
+                            quantite: quantite,
+                            prix_unitaire: prixUnitaire,
+                            remise_pourcentage: remisePourcentage,
+                            tva_taux: tvaTaux
+                          };
+                        });
+                        
+                        // Calculer les totaux (s'assurer que ce sont des nombres)
+                        const sousTotal = Number(calculateSubtotal()) || 0;
+                        const taxeMontant = Number(calculateTax()) || 0;
+                        const remiseMontant = Number(calculatePromoDiscount()) || 0;
+                        const totalTtc = Number(calculateTotal()) || 0;
+                        
+                        // Vérifier que lignesData est un tableau valide
+                        if (!Array.isArray(lignesData) || lignesData.length === 0) {
+                          throw new Error('Aucune ligne de vente valide. Veuillez réessayer.');
+                        }
+                        
+                        // S'assurer que lignesData est bien un tableau et non un objet
+                        // Créer une copie propre du tableau pour éviter tout problème de référence
+                        const lignesDataClean = JSON.parse(JSON.stringify(lignesData));
+                        
+                        // Validation finale : s'assurer que chaque ligne est valide
+                        const validatedLignes = lignesDataClean.map((ligne: any, index: number) => {
+                          if (!ligne || typeof ligne !== 'object') {
+                            throw new Error(`Ligne ${index + 1} invalide: doit être un objet`);
+                          }
+                          if (!ligne.produit) {
+                            throw new Error(`Ligne ${index + 1}: le champ 'produit' est requis`);
+                          }
+                          return {
+                            produit: String(ligne.produit),
+                            quantite: Number(ligne.quantite) || 1,
+                            prix_unitaire: Number(ligne.prix_unitaire) || 0,
+                            remise_pourcentage: Number(ligne.remise_pourcentage) || 0,
+                            tva_taux: Number(ligne.tva_taux) || 18.00,
+                            variante: ligne.variante || null,
+                            notes: ligne.notes || ''
+                          };
+                        });
+                        
+                        // Créer une commande via l'API (vente)
+                        const saleData = {
+                          lignes_data: validatedLignes, // Utiliser le tableau validé
+                          sous_total: sousTotal,
+                          taxe_montant: taxeMontant,
+                          remise_montant: remiseMontant,
+                          total_ttc: totalTtc,
+                          mode_paiement: (() => {
+                            // Normaliser le mode de paiement selon les choix valides du backend
+                            if (paymentMethod === 'orange' || paymentMethod === 'orange_money') {
+                              return 'orange_money';
+                            }
+                            if (paymentMethod === 'wave') {
+                              return 'wave';
+                            }
+                            if (paymentMethod === 'cash') {
+                              return 'cash';
+                            }
+                            if (paymentMethod === 'card') {
+                              return 'card';
+                            }
+                            // Par défaut, utiliser 'cash'
+                            console.warn('⚠️ Mode de paiement inconnu:', paymentMethod, '- utilisation de "cash" par défaut');
+                            return 'cash';
+                          })(),
+                          statut_paiement: paymentMethod === 'cash' ? 'pending' : 'completed',
+                          source_vente: 'online', // Utiliser 'online' (choix valide selon le modèle Django)
+                          adresse_livraison: shippingAddress ? `${shippingAddress.name}, ${shippingAddress.address}, ${shippingAddress.phone}` : 'Adresse non spécifiée',
+                          notes: `Commande marketplace - ${new Date().toLocaleString('fr-FR')}`
                         };
                         
-                        // Simuler la création de commande
-                        await new Promise(resolve => setTimeout(resolve, 1000));
+                        // Log détaillé pour le débogage
+                        console.log('📦 Données de la commande:', JSON.stringify(saleData, null, 2));
+                        console.log('📦 lignes_data (validé):', JSON.stringify(validatedLignes, null, 2));
+                        console.log('📦 Types des valeurs:', {
+                          lignes_data_type: Array.isArray(validatedLignes) ? 'array' : typeof validatedLignes,
+                          lignes_data_length: Array.isArray(validatedLignes) ? validatedLignes.length : 'N/A',
+                          is_array: Array.isArray(validatedLignes),
+                          first_line: validatedLignes[0] ? {
+                            produit_type: typeof validatedLignes[0].produit,
+                            produit_value: validatedLignes[0].produit,
+                            quantite_type: typeof validatedLignes[0].quantite,
+                            prix_unitaire_type: typeof validatedLignes[0].prix_unitaire
+                          } : 'N/A'
+                        });
                         
-                        alert('Commande passée avec succès ! Vous recevrez un email de confirmation.');
-                        setShowCheckout(false);
+                        // Créer la vente via l'API
+                        console.log('🚀 ========== CRÉATION DE LA COMMANDE ==========');
+                        console.log('🚀 Données envoyées:', JSON.stringify(saleData, null, 2));
+                        
+                        try {
+                          const saleResponse = await apiService.createSale(saleData);
+                          console.log('✅ Commande créée avec succès:', saleResponse);
+                        console.log('✅ ID de la commande:', saleResponse.id);
+                        console.log('✅ Numéro de facture:', saleResponse.numero_facture);
+                        
+                        // Vérifier que la réponse contient bien les données
+                        if (!saleResponse || (!saleResponse.id && !saleResponse.numero_facture)) {
+                          console.error('❌ Réponse de commande invalide:', saleResponse);
+                          throw new Error('La commande a été créée mais la réponse est invalide. Veuillez vérifier dans "Mes Commandes".');
+                        }
+                        
+                        // Afficher un message de succès
+                        addNotification({
+                          type: 'success',
+                          title: 'Commande confirmée !',
+                          message: `Votre commande #${saleResponse.numero_facture || saleResponse.id} a été passée avec succès.`,
+                        });
+                        
+                        // Vider le panier
                         clearCart();
                         setAppliedPromo(null);
-                      } catch (error) {
-                        console.error('Erreur lors de la commande:', error);
-                        alert('Erreur lors de la finalisation de la commande');
+                        setShowCheckout(false);
+                        
+                        // Attendre un peu pour que la commande soit bien enregistrée côté serveur
+                        console.log('⏳ Attente de l\'enregistrement côté serveur...');
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                        
+                        // Rediriger vers la page des commandes avec un délai pour recharger
+                        console.log('🔄 Redirection vers Mes Commandes...');
+                        navigate('/client/orders', { 
+                          state: { 
+                            message: `Commande #${saleResponse.numero_facture || saleResponse.id} passée avec succès !`,
+                            orderId: saleResponse.id || saleResponse.numero_facture,
+                            refresh: true,
+                            newOrder: true
+                          } 
+                        });
+                        } catch (createError: any) {
+                          console.error('❌ ERREUR lors de la création de la commande:', createError);
+                          console.error('❌ Type d\'erreur:', typeof createError);
+                          console.error('❌ Message:', createError?.message);
+                          console.error('❌ Response:', createError?.response);
+                          console.error('❌ Response Data:', createError?.response?.data);
+                          console.error('❌ Stack:', createError?.stack);
+                          throw createError; // Re-lancer l'erreur pour qu'elle soit gérée par le catch principal
+                        }
+                      } catch (error: any) {
+                        console.error('❌ ========== ERREUR GLOBALE ==========');
+                        console.error('❌ Erreur lors de la commande:', error);
+                        console.error('❌ Type d\'erreur:', typeof error);
+                        console.error('❌ Détails de l\'erreur:', {
+                          message: error?.message,
+                          response: error?.response,
+                          responseData: error?.response?.data,
+                          responseStatus: error?.response?.status,
+                          responseStatusText: error?.response?.statusText,
+                          stack: error?.stack
+                        });
+                        
+                        // Afficher un message d'erreur plus détaillé
+                        let errorMessage = 'Erreur lors de la finalisation de la commande.';
+                        let errorDetails: string[] = [];
+                        
+                        if (error?.response?.data) {
+                          // Erreur de l'API
+                          const apiError = error.response.data;
+                          
+                          console.error('❌ Erreur API complète:', apiError);
+                          
+                          if (typeof apiError === 'object') {
+                            // Parcourir toutes les erreurs
+                            Object.entries(apiError).forEach(([key, value]: [string, any]) => {
+                              if (Array.isArray(value)) {
+                                value.forEach((msg: any) => {
+                                  // Convertir proprement les messages
+                                  const msgStr = typeof msg === 'object' ? JSON.stringify(msg) : String(msg);
+                                  errorDetails.push(`${key}: ${msgStr}`);
+                                });
+                              } else if (typeof value === 'object' && value !== null) {
+                                // Essayer de convertir l'objet en JSON lisible
+                                try {
+                                  errorDetails.push(`${key}: ${JSON.stringify(value, null, 2)}`);
+                                } catch (e) {
+                                  errorDetails.push(`${key}: [Objet non sérialisable]`);
+                                }
+                              } else if (typeof value === 'string') {
+                                errorDetails.push(`${key}: ${value}`);
+                              } else {
+                                errorDetails.push(`${key}: ${String(value)}`);
+                              }
+                            });
+                            
+                            // Utiliser le premier message d'erreur comme message principal
+                            if (errorDetails.length > 0) {
+                              errorMessage = errorDetails[0];
+                            }
+                          } else if (typeof apiError === 'string') {
+                            errorMessage = apiError;
+                            errorDetails.push(apiError);
+                          }
+                        } else if (error?.message) {
+                          // Erreur JavaScript
+                          errorMessage = error.message;
+                          errorDetails.push(error.message);
+                        }
+                        
+                        // Construire le message final
+                        let finalMessage = `Erreur lors de la finalisation de la commande:\n\n${errorMessage}`;
+                        if (errorDetails.length > 1) {
+                          finalMessage += `\n\nDétails supplémentaires:\n${errorDetails.slice(1).join('\n')}`;
+                        }
+                        finalMessage += `\n\nVeuillez réessayer ou contacter le support si le problème persiste.`;
+                        
+                        alert(finalMessage);
                       }
                     }}
                   >

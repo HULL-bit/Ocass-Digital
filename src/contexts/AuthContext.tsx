@@ -98,7 +98,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         if (response.user.type_utilisateur === 'entrepreneur') {
           try {
             // Essayer de récupérer l'entreprise depuis l'API
-            const userProfile = await apiService.request('/users/users/me/');
+            const userProfile = await apiService.request('/auth/profile/');
             if (userProfile && userProfile.entreprise) {
               companyData = {
                 id: userProfile.entreprise.id || userProfile.entreprise,

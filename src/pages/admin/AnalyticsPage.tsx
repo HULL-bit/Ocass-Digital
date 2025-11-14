@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { 
   BarChart3, 
@@ -18,54 +18,154 @@ import {
 import { LineChart, Line, AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import MetricCard from '../../components/ui/MetricCard';
 import Button from '../../components/ui/Button';
+import dashboardApiService from '../../services/api/dashboardApi';
+import apiService from '../../services/api/realApi';
 
 const AnalyticsPage: React.FC = () => {
   const [selectedPeriod, setSelectedPeriod] = useState('month');
   const [selectedMetric, setSelectedMetric] = useState('revenue');
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  // Données réelles des métriques (remplacées par l'API)
-  const [platformMetrics, setPlatformMetrics] = useState([
-    { name: 'Jan', revenue: 185000000, users: 850, companies: 45, transactions: 12500 },
-    { name: 'Fév', revenue: 198000000, users: 920, companies: 52, transactions: 14200 },
-    { name: 'Mar', revenue: 215000000, users: 1050, companies: 61, transactions: 16800 },
-    { name: 'Avr', revenue: 235000000, users: 1180, companies: 73, transactions: 19200 },
-    { name: 'Mai', revenue: 258000000, users: 1320, companies: 82, transactions: 22100 },
-    { name: 'Jun', revenue: 285000000, users: 1450, companies: 89, transactions: 24800 },
-  ]);
+  // Données réelles depuis l'API
+  const [dashboardMetrics, setDashboardMetrics] = useState<any>(null);
+  const [platformMetrics, setPlatformMetrics] = useState<any[]>([]);
+  const [sectorPerformance, setSectorPerformance] = useState<any[]>([]);
+  const [userEngagement, setUserEngagement] = useState<any[]>([]);
+  const [topCompanies, setTopCompanies] = useState<any[]>([]);
+  const [geographicData, setGeographicData] = useState<any[]>([]);
 
-  const sectorPerformance = [
-    { sector: 'Technologie', revenue: 125000000, growth: 28.5, companies: 22 },
-    { sector: 'Commerce', revenue: 89000000, growth: 18.2, companies: 31 },
-    { sector: 'Santé', revenue: 67000000, growth: 15.8, companies: 18 },
-    { sector: 'Services', revenue: 45000000, growth: 22.1, companies: 13 },
-    { sector: 'Autres', revenue: 28000000, growth: 12.4, companies: 5 },
-  ];
+  // Charger les données réelles depuis l'API
+  useEffect(() => {
+    loadAnalyticsData();
+  }, [selectedPeriod]);
 
-  const userEngagement = [
-    { name: 'Lun', activeUsers: 1250, sessions: 3200, avgDuration: 25 },
-    { name: 'Mar', activeUsers: 1180, sessions: 2980, avgDuration: 28 },
-    { name: 'Mer', activeUsers: 1320, sessions: 3450, avgDuration: 32 },
-    { name: 'Jeu', activeUsers: 1280, sessions: 3180, avgDuration: 29 },
-    { name: 'Ven', activeUsers: 1420, sessions: 3680, avgDuration: 35 },
-    { name: 'Sam', activeUsers: 980, sessions: 2450, avgDuration: 22 },
-    { name: 'Dim', activeUsers: 850, sessions: 2100, avgDuration: 18 },
-  ];
+  const loadAnalyticsData = async () => {
+    try {
+      setLoading(true);
+      console.log('📊 Chargement des données analytics depuis l\'API...');
+      
+      // Charger les métriques du dashboard
+      const metrics = await dashboardApiService.getDashboardMetrics('admin', selectedPeriod);
+      setDashboardMetrics(metrics);
+      
+      // Transformer les données de croissance de la plateforme
+      if (metrics.platformGrowth && Array.isArray(metrics.platformGrowth)) {
+        const transformed = metrics.platformGrowth.map((item: any) => ({
+          name: item.name,
+          revenue: item.revenue || 0,
+          users: item.users || 0,
+          companies: item.companies || 0,
+          transactions: item.transactions || 0
+        }));
+        setPlatformMetrics(transformed);
+      } else {
+        // Fallback si pas de données
+        setPlatformMetrics([
+          { name: 'Jan', revenue: 0, users: 0, companies: 0, transactions: 0 },
+          { name: 'Fév', revenue: 0, users: 0, companies: 0, transactions: 0 },
+          { name: 'Mar', revenue: 0, users: 0, companies: 0, transactions: 0 },
+          { name: 'Avr', revenue: 0, users: 0, companies: 0, transactions: 0 },
+          { name: 'Mai', revenue: 0, users: 0, companies: 0, transactions: 0 },
+          { name: 'Jun', revenue: 0, users: 0, companies: 0, transactions: 0 },
+        ]);
+      }
+      
+      // Transformer les données de répartition par secteur
+      if (metrics.sectorDistribution && Array.isArray(metrics.sectorDistribution)) {
+        const transformed = metrics.sectorDistribution.map((item: any) => ({
+          sector: item.name || 'Autres',
+          revenue: item.revenue || 0,
+          growth: item.growth || 0,
+          companies: item.companies || 0
+        }));
+        setSectorPerformance(transformed);
+      } else {
+        setSectorPerformance([]);
+      }
+      
+      // Transformer les top entreprises
+      if (metrics.topCompanies && Array.isArray(metrics.topCompanies)) {
+        const colors = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'];
+        const transformed = metrics.topCompanies.map((item: any, index: number) => ({
+          name: item.name || 'Entreprise',
+          revenue: item.revenue || 0,
+          growth: item.growth || 0,
+          users: item.users || 0,
+          color: colors[index % colors.length]
+        }));
+        setTopCompanies(transformed);
+      } else {
+        setTopCompanies([]);
+      }
+      
+      // Générer les données d'engagement utilisateur (simulation basée sur les données réelles)
+      // TODO: Remplacer par un appel API réel quand disponible
+      const engagementData = generateUserEngagementData(metrics.activeUsers || 0);
+      setUserEngagement(engagementData);
+      
+      // Générer les données géographiques (simulation basée sur les données réelles)
+      // TODO: Remplacer par un appel API réel quand disponible
+      const geoData = generateGeographicData(metrics.totalUsers || 0, metrics.totalCompanies || 0, metrics.totalRevenue || 0);
+      setGeographicData(geoData);
+      
+      console.log('✅ Données analytics chargées avec succès');
+    } catch (error) {
+      console.error('❌ Erreur lors du chargement des données analytics:', error);
+      // Utiliser des données par défaut en cas d'erreur
+      setPlatformMetrics([
+        { name: 'Jan', revenue: 0, users: 0, companies: 0, transactions: 0 },
+        { name: 'Fév', revenue: 0, users: 0, companies: 0, transactions: 0 },
+        { name: 'Mar', revenue: 0, users: 0, companies: 0, transactions: 0 },
+        { name: 'Avr', revenue: 0, users: 0, companies: 0, transactions: 0 },
+        { name: 'Mai', revenue: 0, users: 0, companies: 0, transactions: 0 },
+        { name: 'Jun', revenue: 0, users: 0, companies: 0, transactions: 0 },
+      ]);
+      setSectorPerformance([]);
+      setTopCompanies([]);
+      setUserEngagement([]);
+      setGeographicData([]);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
 
-  const topCompanies = [
-    { name: 'TechSolutions', revenue: 150000000, growth: 25.5, users: 25, color: '#3B82F6' },
-    { name: 'Pharmacie Moderne', revenue: 45000000, growth: 12.8, users: 8, color: '#10B981' },
-    { name: 'Boutique Marie', revenue: 25000000, growth: 18.2, users: 5, color: '#F59E0B' },
-    { name: 'Restaurant Baobab', revenue: 18000000, growth: 22.1, users: 3, color: '#EF4444' },
-    { name: 'Salon Beauté', revenue: 12000000, growth: 15.6, users: 2, color: '#8B5CF6' },
-  ];
+  // Fonction helper pour générer les données d'engagement (temporaire)
+  const generateUserEngagementData = (activeUsers: number) => {
+    const days = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+    return days.map((day, index) => ({
+      name: day,
+      activeUsers: Math.floor(activeUsers * (0.7 + Math.random() * 0.3)),
+      sessions: Math.floor(activeUsers * (2 + Math.random() * 1.5)),
+      avgDuration: Math.floor(15 + Math.random() * 20)
+    }));
+  };
 
-  const geographicData = [
-    { region: 'Dakar', users: 856, companies: 67, revenue: 185000000 },
-    { region: 'Thiès', users: 234, companies: 12, revenue: 45000000 },
-    { region: 'Saint-Louis', users: 156, companies: 6, revenue: 28000000 },
-    { region: 'Kaolack', users: 123, companies: 3, revenue: 18000000 },
-    { region: 'Ziguinchor', users: 71, companies: 1, revenue: 9000000 },
-  ];
+  // Fonction helper pour générer les données géographiques (temporaire)
+  const generateGeographicData = (totalUsers: number, totalCompanies: number, totalRevenue: number) => {
+    const regions = [
+      { name: 'Dakar', ratio: 0.6 },
+      { name: 'Thiès', ratio: 0.15 },
+      { name: 'Saint-Louis', ratio: 0.1 },
+      { name: 'Kaolack', ratio: 0.08 },
+      { name: 'Ziguinchor', ratio: 0.07 }
+    ];
+    
+    return regions.map(region => ({
+      region: region.name,
+      users: Math.floor(totalUsers * region.ratio),
+      companies: Math.floor(totalCompanies * region.ratio),
+      revenue: Math.floor(totalRevenue * region.ratio)
+    }));
+  };
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    // Vider le cache pour forcer le rechargement des vraies données
+    dashboardApiService.clearCache();
+    await loadAnalyticsData();
+  };
 
   const periods = [
     { value: 'week', label: 'Cette semaine' },
@@ -93,8 +193,13 @@ const AnalyticsPage: React.FC = () => {
         </div>
         
         <div className="flex items-center space-x-3">
-          <Button variant="secondary" icon={<RefreshCw className="w-4 h-4" />}>
-            Actualiser
+          <Button 
+            variant="secondary" 
+            icon={<RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />}
+            onClick={handleRefresh}
+            disabled={refreshing || loading}
+          >
+            {refreshing ? 'Actualisation...' : 'Actualiser'}
           </Button>
           <Button variant="secondary" icon={<Download className="w-4 h-4" />}>
             Exporter
@@ -153,40 +258,79 @@ const AnalyticsPage: React.FC = () => {
       </div>
 
       {/* Key Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <MetricCard
-          title="Revenus Totaux"
-          value={285000000}
-          previousValue={258000000}
-          format="currency"
-          icon={<DollarSign className="w-6 h-6" />}
-          color="success"
-        />
-        <MetricCard
-          title="Utilisateurs Actifs"
-          value={1450}
-          previousValue={1320}
-          format="number"
-          icon={<Users className="w-6 h-6" />}
-          color="primary"
-        />
-        <MetricCard
-          title="Entreprises Actives"
-          value={89}
-          previousValue={82}
-          format="number"
-          icon={<Building2 className="w-6 h-6" />}
-          color="info"
-        />
-        <MetricCard
-          title="Transactions"
-          value={24800}
-          previousValue={22100}
-          format="number"
-          icon={<Activity className="w-6 h-6" />}
-          color="warning"
-        />
-      </div>
+      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+          <span className="ml-2 text-gray-600 dark:text-gray-400">Chargement des métriques...</span>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <MetricCard
+            title="Revenus Totaux"
+            value={dashboardMetrics?.totalRevenue || 0}
+            previousValue={(() => {
+              const current = dashboardMetrics?.totalRevenue || 0;
+              const growth = dashboardMetrics?.revenueGrowthPercentage || 0;
+              // Calculer la valeur précédente basée sur le pourcentage de croissance
+              // Si croissance = 10%, alors previous = current / 1.10
+              if (growth > 0 && current > 0) {
+                return Math.round(current / (1 + growth / 100));
+              }
+              // Si pas de croissance ou valeur nulle, utiliser 90% comme estimation
+              return current > 0 ? Math.round(current * 0.95) : 0;
+            })()}
+            format="currency"
+            icon={<DollarSign className="w-6 h-6" />}
+            color="success"
+          />
+          <MetricCard
+            title="Utilisateurs Actifs"
+            value={dashboardMetrics?.activeUsers || dashboardMetrics?.totalUsers || 0}
+            previousValue={(() => {
+              const current = dashboardMetrics?.activeUsers || dashboardMetrics?.totalUsers || 0;
+              const growth = dashboardMetrics?.usersGrowthPercentage || 0;
+              // Calculer la valeur précédente basée sur le pourcentage de croissance
+              if (growth > 0 && current > 0) {
+                return Math.round(current / (1 + growth / 100));
+              }
+              // Si pas de croissance ou valeur nulle, utiliser 95% comme estimation
+              return current > 0 ? Math.round(current * 0.95) : 0;
+            })()}
+            format="number"
+            icon={<Users className="w-6 h-6" />}
+            color="primary"
+          />
+          <MetricCard
+            title="Entreprises Actives"
+            value={dashboardMetrics?.totalCompanies || 0}
+            previousValue={(() => {
+              const current = dashboardMetrics?.totalCompanies || 0;
+              const growth = dashboardMetrics?.companiesGrowthPercentage || 0;
+              // Calculer la valeur précédente basée sur le pourcentage de croissance
+              if (growth > 0 && current > 0) {
+                return Math.round(current / (1 + growth / 100));
+              }
+              // Si pas de croissance ou valeur nulle, utiliser 95% comme estimation
+              return current > 0 ? Math.round(current * 0.95) : 0;
+            })()}
+            format="number"
+            icon={<Building2 className="w-6 h-6" />}
+            color="info"
+          />
+          <MetricCard
+            title="Produits"
+            value={dashboardMetrics?.totalProducts || 0}
+            previousValue={(() => {
+              const current = dashboardMetrics?.totalProducts || 0;
+              // Pour les produits, utiliser une estimation conservatrice
+              return current > 0 ? Math.round(current * 0.98) : 0;
+            })()}
+            format="number"
+            icon={<Package className="w-6 h-6" />}
+            color="warning"
+          />
+        </div>
+      )}
 
       {/* Charts Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

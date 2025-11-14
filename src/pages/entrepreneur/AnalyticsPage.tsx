@@ -21,11 +21,16 @@ import MetricCard from '../../components/ui/MetricCard';
 import DateTimeCard from '../../components/ui/DateTimeCard';
 import Button from '../../components/ui/Button';
 import apiService from '../../services/api/realApi';
+import dashboardApiService from '../../services/api/dashboardApi';
 
 const AnalyticsPage: React.FC = () => {
   const [selectedMetric, setSelectedMetric] = useState('sales');
   const [analyticsData, setAnalyticsData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [productPerformance, setProductPerformance] = useState<any[]>([]);
+  const [customerSegments, setCustomerSegments] = useState<any[]>([]);
+  const [dailyActivity, setDailyActivity] = useState<any[]>([]);
+  const [topCustomers, setTopCustomers] = useState<any[]>([]);
 
   // Charger les données réelles d'analytics
   useEffect(() => {
@@ -39,43 +44,59 @@ const AnalyticsPage: React.FC = () => {
           apiService.getCustomers()
         ]);
         
-        // Calculer les métriques réelles
-        const totalSales = sales.results?.reduce((sum: number, sale: any) => sum + (parseFloat(sale.total_ttc) || 0), 0) || 0;
-        const totalOrders = sales.results?.length || 0;
-        const totalCustomers = customers.results?.length || 0;
-        const totalProducts = products.length || 0;
+        // Charger les métriques depuis l'API dashboard entrepreneur
+        const dashboardMetrics = await dashboardApiService.getDashboardMetrics('entrepreneur', 'month');
+        
+        // Calculer les métriques réelles depuis les données brutes
+        const salesList = sales.results || sales || [];
+        const productsList = Array.isArray(products) ? products : [];
+        const customersList = customers.results || customers || [];
+        
+        const totalSales = salesList.reduce((sum: number, sale: any) => sum + (parseFloat(sale.total_ttc) || 0), 0) || dashboardMetrics.totalRevenue || 0;
+        const totalOrders = salesList.length || 0;
+        const totalCustomers = customersList.length || 0;
+        const totalProducts = productsList.length || dashboardMetrics.totalProducts || 0;
+        
+        // Générer les données de croissance mensuelle à partir des vraies ventes
+        const salesData = generateMonthlySalesData(salesList);
+        
+        // Générer les performances des produits à partir des vraies données
+        const productPerf = generateProductPerformance(productsList, salesList);
+        setProductPerformance(productPerf);
+        
+        // Générer les segments de clients à partir des vraies données
+        const customerSeg = generateCustomerSegments(customersList, salesList);
+        setCustomerSegments(customerSeg);
+        
+        // Générer l'activité quotidienne à partir des vraies ventes
+        const dailyAct = generateDailyActivity(salesList);
+        setDailyActivity(dailyAct);
+        
+        // Générer le top des clients à partir des vraies ventes
+        const topCust = generateTopCustomers(customersList, salesList);
+        setTopCustomers(topCust);
         
         setAnalyticsData({
           totalSales,
           totalOrders,
           totalCustomers,
           totalProducts,
-          salesData: [
-            { name: 'Jan', ventes: Math.floor(totalSales * 0.15), commandes: Math.floor(totalOrders * 0.15), clients: Math.floor(totalCustomers * 0.15), marge: 18.5 },
-            { name: 'Fév', ventes: Math.floor(totalSales * 0.18), commandes: Math.floor(totalOrders * 0.18), clients: Math.floor(totalCustomers * 0.18), marge: 19.2 },
-            { name: 'Mar', ventes: Math.floor(totalSales * 0.20), commandes: Math.floor(totalOrders * 0.20), clients: Math.floor(totalCustomers * 0.20), marge: 20.1 },
-            { name: 'Avr', ventes: Math.floor(totalSales * 0.22), commandes: Math.floor(totalOrders * 0.22), clients: Math.floor(totalCustomers * 0.22), marge: 21.3 },
-            { name: 'Mai', ventes: Math.floor(totalSales * 0.25), commandes: Math.floor(totalOrders * 0.25), clients: Math.floor(totalCustomers * 0.25), marge: 22.0 },
-            { name: 'Jun', ventes: Math.floor(totalSales * 0.30), commandes: Math.floor(totalOrders * 0.30), clients: Math.floor(totalCustomers * 0.30), marge: 22.8 },
-          ]
+          salesData
         });
       } catch (error) {
         console.error('Erreur lors du chargement des analytics:', error);
         // Données par défaut en cas d'erreur
         setAnalyticsData({
-          totalSales: 2350000,
-          totalOrders: 82,
-          totalCustomers: 52,
-          totalProducts: 150,
-          salesData: [
-            { name: 'Jan', ventes: 1250000, commandes: 45, clients: 23, marge: 18.5 },
-            { name: 'Fév', ventes: 1450000, commandes: 52, clients: 28, marge: 19.2 },
-            { name: 'Mar', ventes: 1680000, commandes: 61, clients: 34, marge: 20.1 },
-            { name: 'Avr', ventes: 1920000, commandes: 68, clients: 41, marge: 21.3 },
-            { name: 'Mai', ventes: 2100000, commandes: 75, clients: 47, marge: 22.0 },
-            { name: 'Jun', ventes: 2350000, commandes: 82, clients: 52, marge: 22.8 },
-          ]
+          totalSales: 0,
+          totalOrders: 0,
+          totalCustomers: 0,
+          totalProducts: 0,
+          salesData: []
         });
+        setProductPerformance([]);
+        setCustomerSegments([]);
+        setDailyActivity([]);
+        setTopCustomers([]);
       } finally {
         setLoading(false);
       }
@@ -84,53 +105,160 @@ const AnalyticsPage: React.FC = () => {
     loadAnalyticsData();
   }, []);
 
-  // Utiliser les données réelles ou par défaut
-  const salesData = analyticsData?.salesData || [
-    { name: 'Jan', ventes: 1250000, commandes: 45, clients: 23, marge: 18.5 },
-    { name: 'Fév', ventes: 1450000, commandes: 52, clients: 28, marge: 19.2 },
-    { name: 'Mar', ventes: 1680000, commandes: 61, clients: 34, marge: 20.1 },
-    { name: 'Avr', ventes: 1920000, commandes: 68, clients: 41, marge: 21.3 },
-    { name: 'Mai', ventes: 2100000, commandes: 75, clients: 47, marge: 22.0 },
-    { name: 'Jun', ventes: 2350000, commandes: 82, clients: 52, marge: 22.8 },
-  ];
+  // Fonction pour générer les données mensuelles de ventes
+  const generateMonthlySalesData = (sales: any[]) => {
+    const months = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun'];
+    const now = new Date();
+    const salesData = [];
+    
+    for (let i = 5; i >= 0; i--) {
+      const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const monthStart = new Date(date.getFullYear(), date.getMonth(), 1);
+      const monthEnd = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+      
+      const monthSales = sales.filter((sale: any) => {
+        const saleDate = new Date(sale.date_creation);
+        return saleDate >= monthStart && saleDate <= monthEnd;
+      });
+      
+      const monthRevenue = monthSales.reduce((sum: number, sale: any) => sum + (parseFloat(sale.total_ttc) || 0), 0);
+      const monthOrders = monthSales.length;
+      const monthCustomers = new Set(monthSales.map((s: any) => s.client?.id || s.client)).size;
+      
+      salesData.push({
+        name: months[5 - i],
+        ventes: monthRevenue,
+        commandes: monthOrders,
+        clients: monthCustomers,
+        marge: monthRevenue > 0 ? ((monthRevenue * 0.2) / monthRevenue) * 100 : 0
+      });
+    }
+    
+    return salesData;
+  };
 
-  const productPerformance = [
-    { nom: 'Riz Brisé Local', ventes: 125, revenus: 1500000, marge: 50.0, stock: 150 },
-    { nom: 'Boubou Grand Boubou', ventes: 45, revenus: 2925000, marge: 160.0, stock: 8 },
-    { nom: 'Bissap Rouge Kirène', ventes: 156, revenus: 187200, marge: 100.0, stock: 45 },
-    { nom: 'Djembé Artisanal', ventes: 12, revenus: 1140000, marge: 111.1, stock: 3 },
-    { nom: 'Savon Noir Africain', ventes: 89, revenus: 222500, marge: 108.3, stock: 75 },
-  ];
+  // Fonction pour générer les performances des produits
+  const generateProductPerformance = (products: any[], sales: any[]) => {
+    // Compter les ventes par produit
+    const productSales: Record<string, { sales: number; revenue: number; stock: number; name: string }> = {};
+    
+    sales.forEach((sale: any) => {
+      sale.lignes?.forEach((ligne: any) => {
+        const productId = ligne.produit?.id || ligne.produit;
+        const product = products.find((p: any) => p.id === productId);
+        if (product) {
+          if (!productSales[productId]) {
+            productSales[productId] = {
+              sales: 0,
+              revenue: 0,
+              stock: product.stock_actuel || product.stock || 0,
+              name: product.nom || product.name || 'Produit'
+            };
+          }
+          productSales[productId].sales += ligne.quantite || 0;
+          productSales[productId].revenue += parseFloat(ligne.total_ttc || 0);
+        }
+      });
+    });
+    
+    // Trier par revenus et prendre le top 5
+    return Object.values(productSales)
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 5)
+      .map(product => ({
+        nom: product.name,
+        ventes: product.sales,
+        revenus: product.revenue,
+        marge: product.revenue > 0 ? ((product.revenue * 0.2) / product.revenue) * 100 : 0,
+        stock: product.stock
+      }));
+  };
 
-  const customerSegments = [
-    { segment: 'Nouveaux', count: 23, value: 15, color: '#3B82F6' },
-    { segment: 'Réguliers', count: 45, value: 35, color: '#10B981' },
-    { segment: 'VIP', count: 12, value: 40, color: '#F59E0B' },
-    { segment: 'Inactifs', count: 8, value: 10, color: '#EF4444' },
-  ];
+  // Fonction pour générer les segments de clients
+  const generateCustomerSegments = (customers: any[], sales: any[]) => {
+    // Compter les commandes par client
+    const customerOrders: Record<string, number> = {};
+    sales.forEach((sale: any) => {
+      const clientId = sale.client?.id || sale.client;
+      customerOrders[clientId] = (customerOrders[clientId] || 0) + 1;
+    });
+    
+    const orderCounts = Object.values(customerOrders);
+    const nouveaux = orderCounts.filter(count => count === 1).length;
+    const reguliers = orderCounts.filter(count => count >= 2 && count < 5).length;
+    const vip = orderCounts.filter(count => count >= 5).length;
+    const inactifs = customers.length - Object.keys(customerOrders).length;
+    
+    const total = customers.length || 1;
+    
+    return [
+      { segment: 'Nouveaux', count: nouveaux, value: Math.round((nouveaux / total) * 100), color: '#3B82F6' },
+      { segment: 'Réguliers', count: reguliers, value: Math.round((reguliers / total) * 100), color: '#10B981' },
+      { segment: 'VIP', count: vip, value: Math.round((vip / total) * 100), color: '#F59E0B' },
+      { segment: 'Inactifs', count: inactifs, value: Math.round((inactifs / total) * 100), color: '#EF4444' },
+    ];
+  };
 
-  const dailyActivity = [
-    { heure: '08h', ventes: 2, montant: 25000 },
-    { heure: '09h', ventes: 5, montant: 85000 },
-    { heure: '10h', ventes: 8, montant: 125000 },
-    { heure: '11h', ventes: 12, montant: 180000 },
-    { heure: '12h', ventes: 15, montant: 220000 },
-    { heure: '13h', ventes: 10, montant: 145000 },
-    { heure: '14h', ventes: 18, montant: 285000 },
-    { heure: '15h', ventes: 22, montant: 350000 },
-    { heure: '16h', ventes: 20, montant: 315000 },
-    { heure: '17h', ventes: 16, montant: 245000 },
-    { heure: '18h', ventes: 12, montant: 185000 },
-    { heure: '19h', ventes: 8, montant: 95000 },
-  ];
+  // Fonction pour générer l'activité quotidienne
+  const generateDailyActivity = (sales: any[]) => {
+    const hours = ['08h', '09h', '10h', '11h', '12h', '13h', '14h', '15h', '16h', '17h', '18h', '19h'];
+    const activity: any[] = [];
+    
+    hours.forEach((hour, index) => {
+      const hourStart = index + 8;
+      const hourSales = sales.filter((sale: any) => {
+        const saleDate = new Date(sale.date_creation);
+        return saleDate.getHours() === hourStart;
+      });
+      
+      const ventes = hourSales.length;
+      const montant = hourSales.reduce((sum: number, sale: any) => sum + (parseFloat(sale.total_ttc) || 0), 0);
+      
+      activity.push({ heure: hour, ventes, montant });
+    });
+    
+    return activity;
+  };
 
-  const topCustomers = [
-    { nom: 'Aminata Diop', commandes: 28, total: 850000, derniere: '2024-01-15' },
-    { nom: 'Ousmane Ndiaye', commandes: 22, total: 650000, derniere: '2024-01-14' },
-    { nom: 'Khadija Fall', commandes: 18, total: 520000, derniere: '2024-01-13' },
-    { nom: 'Mamadou Cissé', commandes: 15, total: 450000, derniere: '2024-01-12' },
-    { nom: 'Aïssatou Sy', commandes: 12, total: 380000, derniere: '2024-01-11' },
-  ];
+  // Fonction pour générer le top des clients
+  const generateTopCustomers = (customers: any[], sales: any[]) => {
+    // Calculer les statistiques par client
+    const customerStats: Record<string, { name: string; orders: number; total: number; lastOrder: string }> = {};
+    
+    sales.forEach((sale: any) => {
+      const clientId = sale.client?.id || sale.client;
+      const client = customers.find((c: any) => c.id === clientId);
+      if (client) {
+        if (!customerStats[clientId]) {
+          customerStats[clientId] = {
+            name: `${client.prenom || ''} ${client.nom || ''}`.trim() || client.email || 'Client',
+            orders: 0,
+            total: 0,
+            lastOrder: sale.date_creation
+          };
+        }
+        customerStats[clientId].orders += 1;
+        customerStats[clientId].total += parseFloat(sale.total_ttc || 0);
+        if (new Date(sale.date_creation) > new Date(customerStats[clientId].lastOrder)) {
+          customerStats[clientId].lastOrder = sale.date_creation;
+        }
+      }
+    });
+    
+    // Trier par total et prendre le top 5
+    return Object.values(customerStats)
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 5)
+      .map(customer => ({
+        nom: customer.name,
+        commandes: customer.orders,
+        total: customer.total,
+        derniere: new Date(customer.lastOrder).toISOString().split('T')[0]
+      }));
+  };
+
+  // Utiliser les données réelles
+  const salesData = analyticsData?.salesData || [];
 
 
   const metrics = [

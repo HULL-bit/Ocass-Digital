@@ -44,18 +44,31 @@ const DashboardPage: React.FC = () => {
       try {
         setDashboardData(prev => ({ ...prev, loading: true }));
         
-        // Charger les métriques réelles avec cache
-        const metrics = await dashboardApiService.getDashboardMetrics();
+        // Vider le cache pour forcer le rechargement des vraies données
+        dashboardApiService.clearCache();
+        
+        // Charger les métriques réelles
+        const metrics = await dashboardApiService.getDashboardMetrics('admin', 'today');
         setRealDashboardData(metrics);
         
-        setDashboardData({
+        console.log('📊 Données reçues du backend (DashboardPage):', {
           totalUsers: metrics.totalUsers,
-          totalCompanies: metrics.totalCompanies,
-          totalProducts: metrics.totalProducts,
-          totalRevenue: metrics.totalRevenue,
           activeUsers: metrics.activeUsers,
           newUsersThisMonth: metrics.newUsersThisMonth,
+          totalCompanies: metrics.totalCompanies,
           newCompaniesThisMonth: metrics.newCompaniesThisMonth,
+          fullMetrics: metrics
+        });
+        
+        // TOUJOURS utiliser les vraies données, même si elles sont à 0 - PAS de fallback
+        setDashboardData({
+          totalUsers: metrics.totalUsers ?? 0,
+          totalCompanies: metrics.totalCompanies ?? 0,
+          totalProducts: metrics.totalProducts ?? 0,
+          totalRevenue: metrics.totalRevenue ?? 0,
+          activeUsers: metrics.activeUsers ?? 0,
+          newUsersThisMonth: metrics.newUsersThisMonth ?? 0,
+          newCompaniesThisMonth: metrics.newCompaniesThisMonth ?? 0,
           loading: false
         });
       } catch (error) {

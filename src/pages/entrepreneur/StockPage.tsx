@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, memo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -33,10 +33,29 @@ import entrepreneurApiService from '../../services/api/entrepreneurApi';
 import * as yup from 'yup';
 import useDataSync from '../../hooks/useDataSync';
 import { useAuth } from '../../contexts/AuthContext';
+import { getProductImageFromPublic } from '../../utils/publicProductImages';
+import { logger } from '../../utils/logger';
+
+// Debounce helper
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+  
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+    
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+  
+  return debouncedValue;
+}
 
 const StockPage: React.FC = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
   const [showProductForm, setShowProductForm] = useState(false);
@@ -50,6 +69,8 @@ const StockPage: React.FC = () => {
   const [selectedImages, setSelectedImages] = useState<File[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
+  // Debounce la recherche pour éviter trop de filtrages
+  const debouncedSearchTerm = useDebounce(searchTerm, 300);
   // Utiliser le hook de synchronisation des données (automatique)
   const { products: syncedProducts } = useDataSync();
   
@@ -69,9 +90,32 @@ const StockPage: React.FC = () => {
 
   // Charger les produits depuis l'API
   useEffect(() => {
-    loadProducts();
-    loadCategories();
-  }, []);
+    // Attendre que l'utilisateur soit chargé avant de charger les produits
+    if (user !== null) {
+      loadProducts();
+      loadCategories();
+    }
+  }, [user]);
+  
+  // Log pour vérifier l'état des produits au moment du rendu (seulement en dev)
+  useEffect(() => {
+    logger.debug('🔄 RENDU - État actuel des produits:', {
+      count: products.length,
+      loading,
+      searchTerm: debouncedSearchTerm,
+      selectedCategory
+    });
+  }, [products.length, loading, debouncedSearchTerm, selectedCategory]);
+  
+  // Log pour vérifier les changements de stockMetrics (seulement en dev)
+  useEffect(() => {
+    logger.debug('🔄 stockMetrics mis à jour:', {
+      totalValue: stockMetrics.totalValue,
+      activeProducts: stockMetrics.activeProducts,
+      outOfStock: stockMetrics.outOfStock,
+      lowStock: stockMetrics.lowStock
+    });
+  }, [stockMetrics]);
 
   // Fonction de validation en temps réel
   const validateField = (fieldName: string, value: any): string | null => {
@@ -172,12 +216,75 @@ const StockPage: React.FC = () => {
       lowStock: 0
     };
 
-    productsData.forEach(product => {
-      const stockActuel = product.stock_actuel || 0;
-      const prixAchat = parseFloat(product.prix_achat) || 0;
+    console.log('📊 Calcul des métriques du stock pour', productsData.length, 'produits');
+    
+    // Log des premiers produits pour debug
+    if (productsData.length > 0) {
+      console.log('🔍 Aperçu des données brutes des 3 premiers produits:', productsData.slice(0, 3).map((p: any) => ({
+        id: p.id,
+        nom: p.nom || p.name,
+        stock_actuel: p.stock_actuel,
+        stock: p.stock,
+        stock_disponible: p.stock_disponible,
+        prix_achat: p.prix_achat,
+        prix_achat_ht: p.prix_achat_ht,
+        prix_vente: p.prix_vente,
+        entreprise: p.entreprise || p.entreprise_id
+      })));
+    }
+
+    productsData.forEach((product, index) => {
+      // Récupérer le stock actuel (plusieurs champs possibles)
+      const stockActuel = parseInt(
+        product.stock_actuel || 
+        product.stock || 
+        product.stock_disponible || 
+        0
+      );
+      
+      // Récupérer le prix d'achat (plusieurs champs possibles)
+      // Essayer de convertir en nombre, gérer les chaînes de caractères
+      let prixAchat = 0;
+      if (product.prix_achat !== undefined && product.prix_achat !== null && product.prix_achat !== '') {
+        prixAchat = typeof product.prix_achat === 'string' 
+          ? parseFloat(product.prix_achat.replace(/[^\d.,]/g, '').replace(',', '.')) || 0
+          : parseFloat(product.prix_achat) || 0;
+      } else if (product.prix_achat_ht !== undefined && product.prix_achat_ht !== null && product.prix_achat_ht !== '') {
+        prixAchat = typeof product.prix_achat_ht === 'string'
+          ? parseFloat(product.prix_achat_ht.replace(/[^\d.,]/g, '').replace(',', '.')) || 0
+          : parseFloat(product.prix_achat_ht) || 0;
+      }
+      
+      // Si pas de prix_achat, utiliser prix_vente comme fallback (pour calculer la valeur du stock)
+      // C'est mieux que 0, même si ce n'est pas idéal
+      if (prixAchat === 0 && stockActuel > 0) {
+        const prixVente = parseFloat(product.prix_vente || product.price || 0);
+        if (prixVente > 0) {
+          // Utiliser 70% du prix de vente comme estimation du prix d'achat
+          prixAchat = prixVente * 0.7;
+          console.log(`⚠️ Produit "${product.nom}" n'a pas de prix_achat, utilisation de 70% du prix_vente (${prixVente} * 0.7 = ${prixAchat})`);
+        }
+      }
       
       // Valeur totale du stock (prix d'achat * quantité)
-      metrics.totalValue += prixAchat * stockActuel;
+      const productValue = prixAchat * stockActuel;
+      metrics.totalValue += productValue;
+      
+      // Log seulement les produits avec valeur > 0 ou ceux qui devraient avoir une valeur
+      if (productValue > 0 || (stockActuel > 0 && prixAchat === 0)) {
+        console.log(`💰 Produit ${index + 1} (${product.nom || product.name || 'Sans nom'}):`, {
+          stock_actuel: product.stock_actuel,
+          stock: product.stock,
+          stock_disponible: product.stock_disponible,
+          stockCalculé: stockActuel,
+          prix_achat: product.prix_achat,
+          prix_achat_ht: product.prix_achat_ht,
+          prixCalculé: prixAchat,
+          valeur: productValue,
+          entreprise: product.entreprise || product.entreprise_id,
+          rawProduct: product // Log complet pour debug
+        });
+      }
       
       // Produits actifs (avec stock > 0)
       if (stockActuel > 0) {
@@ -195,6 +302,23 @@ const StockPage: React.FC = () => {
       }
     });
 
+    console.log('📊 Métriques calculées FINALES:', {
+      totalValue: metrics.totalValue,
+      activeProducts: metrics.activeProducts,
+      outOfStock: metrics.outOfStock,
+      lowStock: metrics.lowStock,
+      typeTotalValue: typeof metrics.totalValue,
+      isNumber: typeof metrics.totalValue === 'number',
+      isFinite: isFinite(metrics.totalValue),
+      isNaN: isNaN(metrics.totalValue)
+    });
+    
+    // S'assurer que totalValue est un nombre valide
+    if (isNaN(metrics.totalValue) || !isFinite(metrics.totalValue)) {
+      console.error('❌ ERREUR: totalValue invalide, remplacement par 0');
+      metrics.totalValue = 0;
+    }
+
     return metrics;
   };
 
@@ -202,51 +326,142 @@ const StockPage: React.FC = () => {
     try {
       setLoading(true);
       console.log('🔄 Début du chargement des produits (StockPage)...');
+      console.log('👤 Utilisateur actuel:', {
+        id: user?.id,
+        email: user?.email,
+        role: user?.role,
+        type_utilisateur: (user as any)?.type_utilisateur,
+        company: user?.company,
+        entreprise: (user as any)?.entreprise
+      });
+      
+      // Essayer de charger l'entreprise depuis l'API si elle n'est pas dans le contexte
+      let userCompany = user?.company || (user as any)?.entreprise;
+      if (!userCompany && user) {
+        console.log('🔄 Tentative de chargement de l\'entreprise depuis l\'API...');
+        try {
+          const userProfile = await apiService.request('/auth/profile/');
+          console.log('📋 Profil utilisateur depuis API:', userProfile);
+          if (userProfile && userProfile.entreprise) {
+            userCompany = {
+              id: userProfile.entreprise.id || userProfile.entreprise,
+              name: userProfile.entreprise.nom || userProfile.entreprise_nom
+            };
+            console.log('✅ Entreprise trouvée dans le profil:', userCompany);
+          }
+        } catch (profileError) {
+          console.warn('⚠️ Impossible de charger le profil utilisateur:', profileError);
+        }
+      }
       
       // Vérifier que l'utilisateur a une entreprise
-      if (user && user.company) {
+      if (userCompany) {
         console.log('✅ Utilisateur avec entreprise:', {
-          userId: user.id,
-          companyId: user.company.id,
-          companyName: user.company.name
+          userId: user?.id,
+          companyId: userCompany.id,
+          companyName: userCompany.name
         });
       } else {
         console.warn('⚠️ ATTENTION: L\'utilisateur n\'a pas d\'entreprise associée !');
-        console.warn('📋 Informations utilisateur:', {
-          id: user?.id,
-          email: user?.email,
-          role: user?.role,
-          company: user?.company
-        });
         console.warn('💡 Le backend créera automatiquement une entreprise lors de la première création de produit.');
+        console.warn('💡 Les produits seront chargés quand même - le backend filtre par entreprise via le token.');
       }
       
-      // Essayer d'abord avec getAllProducts() qui récupère tous les produits
+      // TOUJOURS utiliser getProducts() pour les entrepreneurs - le backend filtre automatiquement par entreprise
+      // Même si l'entreprise n'est pas dans le contexte frontend, le backend la connaît via le token
       let response;
+      console.log('📡 Chargement des produits avec getProducts() (backend filtre par entreprise)...');
+      
       try {
-        console.log('📡 Tentative getAllProducts()...');
-        response = await apiService.getAllProducts();
-        console.log('✅ Réponse getAllProducts:', {
+        response = await apiService.getProducts({ page_size: 1000 });
+        console.log('✅ Produits chargés via getProducts (StockPage):', {
           type: typeof response,
           isArray: Array.isArray(response),
-          hasResults: response?.results !== undefined,
+          hasResults: !!response?.results,
           resultsLength: response?.results?.length,
-          directLength: Array.isArray(response) ? response.length : 0,
-          fullResponse: response
+          count: response?.count
         });
-      } catch (error: any) {
-        console.warn('❌ Erreur avec getAllProducts, essai avec getProducts:', error);
+        
+        // Si la réponse est paginée et qu'il y a plus de produits, récupérer toutes les pages
+        if (response && response.results && response.next) {
+          console.log('📄 Pagination détectée, récupération des pages suivantes...');
+          console.log('📄 URL next:', response.next);
+          let allResults = [...response.results];
+          let currentUrl = response.next;
+          let pageCount = 1;
+          
+          while (currentUrl && pageCount < 50) { // Limite de sécurité
+            try {
+              // Construire l'URL complète
+              let fullUrl: string;
+              if (currentUrl.startsWith('http')) {
+                fullUrl = currentUrl;
+              } else if (currentUrl.startsWith('/api/')) {
+                // URL relative complète avec /api/
+                fullUrl = `http://localhost:8000${currentUrl}`;
+              } else if (currentUrl.startsWith('/')) {
+                // URL relative qui commence par / mais sans /api/ - corriger
+                // Si c'est juste /?page=X, c'est probablement une erreur du backend
+                if (currentUrl.startsWith('/?page=')) {
+                  // Construire l'URL correcte vers l'endpoint products
+                  const urlParams = new URLSearchParams(currentUrl.substring(1));
+                  fullUrl = `http://localhost:8000/api/v1/products/products/?${urlParams.toString()}`;
+                  console.log(`🔧 Correction de l'URL: ${currentUrl} -> ${fullUrl}`);
+                } else {
+                  fullUrl = `http://localhost:8000/api/v1/products/products${currentUrl}`;
+                }
+              } else {
+                // URL sans / - ajouter le chemin complet
+                fullUrl = `http://localhost:8000/api/v1/products/products/?${currentUrl}`;
+              }
+              
+              console.log(`📄 Récupération page ${pageCount + 1}: ${fullUrl}`);
+              
+              const nextResponse = await fetch(fullUrl, {
+                headers: {
+                  'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                  'Content-Type': 'application/json'
+                }
+              });
+              
+              if (!nextResponse.ok) {
+                console.warn(`⚠️ Erreur HTTP ${nextResponse.status} pour la page ${pageCount + 1}`);
+                break;
+              }
+              
+              const nextData = await nextResponse.json();
+              if (nextData.results && Array.isArray(nextData.results) && nextData.results.length > 0) {
+                allResults = allResults.concat(nextData.results);
+                currentUrl = nextData.next;
+                pageCount++;
+                console.log(`📄 Page ${pageCount} récupérée: ${nextData.results.length} produits (total: ${allResults.length})`);
+              } else {
+                console.log('✅ Toutes les pages ont été récupérées');
+                break;
+              }
+            } catch (pageError) {
+              console.warn(`❌ Erreur lors de la récupération de la page ${pageCount + 1}:`, pageError);
+              break;
+            }
+          }
+          
+          response = { ...response, results: allResults };
+          console.log(`✅ Total produits récupérés après pagination: ${allResults.length}`);
+        }
+      } catch (getProductsError: any) {
+        console.error('❌ Erreur avec getProducts:', getProductsError);
+        console.log('🔄 Tentative avec getAllProducts() comme fallback...');
         try {
-          response = await apiService.getProducts({ page_size: 100 });
-          console.log('✅ Réponse getProducts:', {
+          response = await apiService.getAllProducts();
+          console.log('✅ Produits chargés via getAllProducts (fallback):', {
             type: typeof response,
             isArray: Array.isArray(response),
-            hasResults: response?.results !== undefined,
-            resultsLength: response?.results?.length
+            length: Array.isArray(response) ? response.length : 'N/A'
           });
-        } catch (error2: any) {
-          console.error('❌ Erreur avec getProducts aussi:', error2);
-          throw error2;
+        } catch (getAllProductsError) {
+          console.error('❌ Erreur avec getAllProducts aussi:', getAllProductsError);
+          // Ne pas throw, continuer avec une liste vide
+          response = [];
         }
       }
       
@@ -268,6 +483,11 @@ const StockPage: React.FC = () => {
       }
       
       console.log(`📦 Total produits extraits: ${productsData.length}`);
+      
+      // getProducts() filtre déjà par entreprise côté backend, donc pas besoin de filtrer à nouveau
+      // Si on a utilisé getAllProducts() comme fallback, on pourrait filtrer, mais généralement
+      // si getProducts() échoue, c'est que l'utilisateur n'a pas d'entreprise, donc on affiche tout
+      console.log('✅ Produits extraits - prêts pour transformation');
       
       if (productsData.length === 0) {
         console.warn('⚠️ ATTENTION: Aucun produit trouvé !');
@@ -332,27 +552,145 @@ const StockPage: React.FC = () => {
       }
       
       // Transformer les données pour correspondre au format attendu
-      const transformedProducts = productsData.map((product: any) => ({
-        ...product,
-        // Utiliser la première image disponible ou une image par défaut
-        image: product.images && product.images.length > 0 ? 
-          (product.images[0].image_url || 
-           (product.images[0].image?.startsWith('http') ? product.images[0].image : 
-            (product.images[0].image ? `http://localhost:8000${product.images[0].image}` : ''))) :
-          product.image_url || 'https://images.pexels.com/photos/33239/wheat-field-wheat-yellow-grain.jpg?auto=compress&cs=tinysrgb&w=400&h=400&dpr=2',
-        // Utiliser les données de stock directement de l'API (modèle simplifié)
-        en_rupture: product.en_rupture || (product.stock_actuel || product.stock || 0) === 0,
-        stock_bas: (product.stock_actuel || product.stock || 0) <= 5,
-        stock_actuel: product.stock_actuel || product.stock || 0,
-        // Formater les prix
-        prix_achat: parseFloat(product.prix_achat) || 0,
-        prix_vente: parseFloat(product.prix_vente) || 0,
-        // Calculer la marge
-        marge_beneficiaire: (product.prix_achat && product.prix_achat > 0) ? 
-          Math.round(((parseFloat(product.prix_vente) - parseFloat(product.prix_achat)) / parseFloat(product.prix_achat)) * 100) : 0,
-        // Utiliser le nom de la catégorie
-        categorie: product.categorie_nom || product.categorie?.nom || 'Non classé'
-      }));
+      const transformedProducts = productsData.map((product: any) => {
+        // Récupérer le stock actuel (vérifier plusieurs champs)
+        const stockActuel = parseInt(
+          product.stock_actuel || 
+          product.stock || 
+          product.stock_disponible || 
+          0
+        );
+        
+        // Récupérer le prix d'achat (vérifier plusieurs champs)
+        // Gérer les cas où prix_achat pourrait être null, undefined, ou une chaîne
+        let prixAchat = 0;
+        if (product.prix_achat !== undefined && product.prix_achat !== null && product.prix_achat !== '') {
+          prixAchat = typeof product.prix_achat === 'string' 
+            ? parseFloat(product.prix_achat.replace(/[^\d.,]/g, '').replace(',', '.')) || 0
+            : parseFloat(product.prix_achat) || 0;
+        } else if (product.prix_achat_ht !== undefined && product.prix_achat_ht !== null && product.prix_achat_ht !== '') {
+          prixAchat = typeof product.prix_achat_ht === 'string'
+            ? parseFloat(product.prix_achat_ht.replace(/[^\d.,]/g, '').replace(',', '.')) || 0
+            : parseFloat(product.prix_achat_ht) || 0;
+        }
+        
+        // Récupérer le prix de vente
+        const prixVente = parseFloat(product.prix_vente || product.price || 0);
+        
+        // Si pas de prix_achat mais qu'il y a du stock, utiliser prix_vente comme fallback
+        if (prixAchat === 0 && stockActuel > 0 && prixVente > 0) {
+          // Utiliser 70% du prix de vente comme estimation du prix d'achat
+          prixAchat = prixVente * 0.7;
+        }
+        
+        // Utiliser la fonction utilitaire qui gère les images de l'API ET les images dans public/
+        const imageUrl = getProductImageFromPublic({
+          nom: product.nom,
+          name: product.name,
+          categorie: product.categorie,
+          categorie_nom: product.categorie_nom,
+          images: product.images,
+          image: product.image,
+          id: product.id
+        });
+        
+        // Récupérer l'ID et le nom de la catégorie
+        const categorieId = product.categorie?.id || 
+                           (typeof product.categorie === 'string' ? product.categorie : null) ||
+                           product.categorie_id ||
+                           product.categorie;
+        const categorieNom = product.categorie_nom || 
+                            product.categorie?.nom || 
+                            (typeof product.categorie === 'object' ? product.categorie?.nom : null) ||
+                            'Non classé';
+        
+        return {
+          ...product,
+          // Utiliser l'image construite ou laisser vide
+          image: imageUrl,
+          // Utiliser les données de stock directement de l'API
+          en_rupture: product.en_rupture || stockActuel === 0,
+          stock_bas: stockActuel > 0 && stockActuel <= 5,
+          stock_actuel: stockActuel,
+          // Formater les prix - GARANTIR que les prix sont bien présents
+          prix_achat: prixAchat,
+          prix_vente: prixVente,
+          // Calculer la marge
+          marge_beneficiaire: (prixAchat > 0 && prixVente > 0) ? 
+            Math.round(((prixVente - prixAchat) / prixAchat) * 100) : 0,
+          // Catégorie avec ID et nom pour le filtrage
+          categorie: categorieNom,
+          categorieId: categorieId,
+          categorie_id: categorieId
+        };
+      });
+      
+      // Log pour vérifier les données transformées - DÉTAILLÉ
+      console.log('📦 Produits transformés - Détails complets (premiers 5):', transformedProducts.slice(0, 5).map((p: any) => ({
+        id: p.id,
+        nom: p.nom,
+        stock_actuel: p.stock_actuel,
+        stock: p.stock,
+        prix_achat: p.prix_achat,
+        prix_achat_ht: p.prix_achat_ht,
+        prix_vente: p.prix_vente,
+        valeur: p.stock_actuel * p.prix_achat,
+        entreprise: p.entreprise || p.entreprise_id,
+        statut: p.statut,
+        categorie: p.categorie,
+        categorieId: p.categorieId,
+        image: p.image ? '✅' : '❌'
+      })));
+      
+      console.log(`✅ Total produits transformés: ${transformedProducts.length}`);
+      if (transformedProducts.length > 0) {
+        console.log('📊 Répartition par catégorie:', transformedProducts.reduce((acc: any, p: any) => {
+          const cat = p.categorie || 'Non classé';
+          acc[cat] = (acc[cat] || 0) + 1;
+          return acc;
+        }, {}));
+        
+        // Log des statistiques des produits
+        const produitsAvecImages = transformedProducts.filter((p: any) => p.image && p.image !== '/accessoires/backpack_1.jpg');
+        const produitsAvecStock = transformedProducts.filter((p: any) => p.stock_actuel > 0);
+        const produitsAvecPrixAchat = transformedProducts.filter((p: any) => p.prix_achat > 0);
+        const valeurStockTotale = transformedProducts.reduce((sum: number, p: any) => {
+          return sum + (p.stock_actuel * p.prix_achat);
+        }, 0);
+        
+        console.log('📈 Statistiques des produits transformés:');
+        console.log(`  - Produits avec images: ${produitsAvecImages.length}/${transformedProducts.length}`);
+        console.log(`  - Produits avec stock > 0: ${produitsAvecStock.length}/${transformedProducts.length}`);
+        console.log(`  - Produits avec prix_achat > 0: ${produitsAvecPrixAchat.length}/${transformedProducts.length}`);
+        console.log(`  - Valeur totale du stock: ${valeurStockTotale.toLocaleString()} XOF`);
+      }
+      
+      // Vérifier combien de produits ont un prix_achat défini
+      const produitsAvecPrixAchat = transformedProducts.filter((p: any) => 
+        (p.prix_achat && parseFloat(p.prix_achat) > 0) || 
+        (p.prix_achat_ht && parseFloat(p.prix_achat_ht) > 0)
+      );
+      const produitsAvecStock = transformedProducts.filter((p: any) => 
+        (p.stock_actuel || p.stock || 0) > 0
+      );
+      console.log('📊 Statistiques des produits:', {
+        total: transformedProducts.length,
+        avecPrixAchat: produitsAvecPrixAchat.length,
+        avecStock: produitsAvecStock.length,
+        avecPrixEtStock: transformedProducts.filter((p: any) => {
+          const stock = p.stock_actuel || p.stock || 0;
+          const prix = parseFloat(p.prix_achat || p.prix_achat_ht || 0);
+          return stock > 0 && prix > 0;
+        }).length
+      });
+      
+      // Calculer la valeur totale AVANT de passer à calculateStockMetrics
+      const valeurTotaleAvant = transformedProducts.reduce((sum, p) => {
+        const stock = p.stock_actuel || p.stock || 0;
+        const prix = parseFloat(p.prix_achat || p.prix_achat_ht || 0);
+        return sum + (stock * prix);
+      }, 0);
+      console.log('💰 Valeur totale calculée AVANT calculateStockMetrics:', valeurTotaleAvant);
       
       console.log('✅ Produits transformés:', transformedProducts.length);
       console.log('📊 Détails des produits:', transformedProducts.map((p: any) => ({
@@ -362,13 +700,40 @@ const StockPage: React.FC = () => {
         categorie: p.categorie
       })));
       
+      console.log(`🎯 AVANT setProducts: ${transformedProducts.length} produits à définir`);
+      console.log('🎯 Aperçu des produits:', transformedProducts.slice(0, 3).map((p: any) => ({
+        id: p.id,
+        nom: p.nom,
+        image: p.image ? '✅' : '❌',
+        categorie: p.categorie,
+        categorieId: p.categorieId
+      })));
+      
       setProducts(transformedProducts);
+      
+      // Vérifier immédiatement après setProducts
+      setTimeout(() => {
+        console.log(`✅ APRÈS setProducts: ${transformedProducts.length} produits définis`);
+      }, 0);
       
       // Calculer et mettre à jour les métriques
       const metrics = calculateStockMetrics(transformedProducts);
+      console.log('📈 Métriques calculées AVANT setStockMetrics:', metrics);
+      console.log('💰 Valeur totale du stock calculée:', metrics.totalValue);
+      
+      // Vérifier que la valeur est bien un nombre
+      if (isNaN(metrics.totalValue) || !isFinite(metrics.totalValue)) {
+        console.error('❌ ERREUR: totalValue n\'est pas un nombre valide:', metrics.totalValue);
+        metrics.totalValue = 0;
+      }
+      
       setStockMetrics(metrics);
       
-      console.log('📈 Métriques calculées:', metrics);
+      // Vérifier que les métriques sont bien mises à jour
+      setTimeout(() => {
+        console.log('✅ stockMetrics.totalValue après setStockMetrics:', metrics.totalValue);
+        console.log('✅ stockMetrics complet:', metrics);
+      }, 100);
     } catch (error) {
       console.error('Erreur lors du chargement des produits:', error);
       // En cas d'erreur, utiliser les données en cache ou vides
@@ -1035,7 +1400,51 @@ const StockPage: React.FC = () => {
 
       // Appel API réel avec FormData
       const response = await apiService.createProduct(formData);
-      console.log('Produit créé avec succès:', response);
+      console.log('✅ Produit créé avec succès:', response);
+      
+      // Si l'utilisateur n'avait pas d'entreprise, elle a été créée automatiquement
+      // Recharger le profil utilisateur pour obtenir l'entreprise
+      if (!user?.company) {
+        console.log('🔄 Rechargement du profil utilisateur pour obtenir l\'entreprise créée...');
+        try {
+          const userProfile = await apiService.request('/auth/profile/');
+          console.log('📋 Profil utilisateur rechargé:', userProfile);
+          
+          // Le profil peut contenir entreprise_nom mais pas l'objet entreprise complet
+          // Il faut récupérer l'entreprise séparément si nécessaire
+          if (userProfile && userProfile.entreprise_nom) {
+            // Essayer de récupérer l'entreprise complète
+            try {
+              const companies = await apiService.request('/companies/entreprises/');
+              const userCompany = companies.results?.find((c: any) => c.nom === userProfile.entreprise_nom) ||
+                                 companies.find((c: any) => c.nom === userProfile.entreprise_nom);
+              if (userCompany) {
+                updateUser({
+                  company: {
+                    id: userCompany.id,
+                    name: userCompany.nom,
+                    logo: userCompany.logo
+                  }
+                });
+                console.log('✅ Entreprise mise à jour dans le contexte:', userCompany);
+              } else if (userProfile.entreprise_nom) {
+                // Si on ne trouve pas l'entreprise mais qu'on a le nom, créer un objet minimal
+                updateUser({
+                  company: {
+                    id: '', // Sera mis à jour lors du prochain chargement
+                    name: userProfile.entreprise_nom
+                  }
+                });
+                console.log('✅ Entreprise (nom seulement) mise à jour dans le contexte:', userProfile.entreprise_nom);
+              }
+            } catch (companyError) {
+              console.warn('⚠️ Impossible de récupérer l\'entreprise complète:', companyError);
+            }
+          }
+        } catch (profileError) {
+          console.warn('⚠️ Impossible de recharger le profil:', profileError);
+        }
+      }
       
       // Uploader les images supplémentaires après création si nécessaire
       const productId = response.id;
@@ -1564,7 +1973,8 @@ const StockPage: React.FC = () => {
     }
   };
 
-  const ProductCard = ({ product }: { product: any }) => (
+  // Mémoriser ProductCard pour éviter les re-renders inutiles
+  const ProductCard = memo(({ product }: { product: any }) => (
     <motion.div
       layout
       initial={{ opacity: 0, scale: 0.9 }}
@@ -1575,15 +1985,35 @@ const StockPage: React.FC = () => {
       onClick={() => setSelectedProduct(product)}
     >
       {/* Image */}
-      <div className="relative aspect-square overflow-hidden">
-        <img
-          src={product.image}
-          alt={product.nom}
-          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-          onError={(e) => {
-            e.currentTarget.src = 'https://images.pexels.com/photos/33239/wheat-field-wheat-yellow-grain.jpg?auto=compress&cs=tinysrgb&w=400&h=400&dpr=2';
-          }}
-        />
+      <div className="relative aspect-square overflow-hidden bg-gray-100 dark:bg-gray-800">
+        {product.image ? (
+          <img
+            src={product.image}
+            alt={product.nom}
+            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+            onError={(e) => {
+              logger.error('❌ Erreur de chargement d\'image pour produit:', product.nom);
+              const target = e.currentTarget;
+              target.style.display = 'none';
+              // Afficher le placeholder
+              const placeholder = target.parentElement?.querySelector('.image-placeholder');
+              if (placeholder) {
+                (placeholder as HTMLElement).style.display = 'flex';
+              }
+            }}
+            onLoad={() => {
+              logger.debug('✅ Image chargée avec succès pour', product.nom);
+            }}
+          />
+        ) : null}
+        {/* Placeholder si pas d'image ou si l'image échoue */}
+        <div 
+          className={`image-placeholder w-full h-full flex flex-col items-center justify-center ${product.image ? 'hidden' : ''}`}
+          style={{ display: product.image ? 'none' : 'flex' }}
+        >
+          <Package className="w-16 h-16 text-gray-400 mb-2" />
+          <span className="text-xs text-gray-500">Pas d'image</span>
+        </div>
         
         {/* Status Badges */}
         <div className="absolute top-3 left-3 flex flex-col space-y-2">
@@ -1616,7 +2046,7 @@ const StockPage: React.FC = () => {
                   action: 'scan_qr',
                   timestamp: new Date().toISOString()
                 };
-                console.log('Scan QR Code pour produit:', qrData);
+                logger.debug('Scan QR Code pour produit:', qrData);
                 alert(`QR Code scanné pour ${product.nom}. Données: ${JSON.stringify(qrData)}`);
               }}
               className="p-2 bg-white/80 backdrop-blur-sm text-gray-600 rounded-lg hover:bg-white transition-colors"
@@ -1702,6 +2132,17 @@ const StockPage: React.FC = () => {
           </div>
         </div>
 
+        {/* Stock Value */}
+        <div className="mb-3 p-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+          <p className="text-xs text-gray-500 mb-1">Valeur du Stock</p>
+          <p className="font-semibold text-primary-600 dark:text-primary-400">
+            {((product.stock_actuel || 0) * (product.prix_achat || 0)).toLocaleString()} XOF
+          </p>
+          <p className="text-xs text-gray-500 mt-1">
+            {product.stock_actuel || 0} unités × {product.prix_achat?.toLocaleString() || 0} XOF
+          </p>
+        </div>
+
         {/* Stock Status */}
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center space-x-2">
@@ -1726,7 +2167,9 @@ const StockPage: React.FC = () => {
         </div>
       </div>
     </motion.div>
-  );
+  ));
+  
+  ProductCard.displayName = 'ProductCard';
 
   return (
     <div className="space-y-6">
@@ -1756,8 +2199,8 @@ const StockPage: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <MetricCard
           title="Valeur Stock Total"
-          value={stockMetrics.totalValue}
-          previousValue={Math.round(stockMetrics.totalValue * 0.95)} // -5% par rapport à la période précédente
+          value={Math.max(0, Math.round(stockMetrics.totalValue))}
+          previousValue={stockMetrics.totalValue > 0 ? Math.max(0, Math.round(stockMetrics.totalValue * 0.95)) : 0}
           format="currency"
           icon={<Package className="w-6 h-6" />}
           color="primary"
@@ -1809,13 +2252,14 @@ const StockPage: React.FC = () => {
             onChange={(e) => setSelectedCategory(e.target.value)}
             className="input-premium w-48"
           >
+            <option value="all">Toutes les catégories</option>
             {productCategories.length > 0 ? productCategories.map((category) => (
               <option key={category.id} value={category.id}>
                 {category.nom || category.name || 'Catégorie'} 
                 {category.count ? ` (${category.count})` : ''}
               </option>
             )) : (
-              <option value="">Aucune catégorie disponible</option>
+              <option value="all">Aucune catégorie disponible</option>
             )}
           </select>
 
@@ -1918,15 +2362,27 @@ const StockPage: React.FC = () => {
                 </Button>
               </div>
             ) : (() => {
-              const filteredProducts = products.filter(product => {
-                const matchesSearch = !searchTerm || product.nom?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                                     product.sku?.toLowerCase().includes(searchTerm.toLowerCase());
-                const matchesCategory = selectedCategory === 'all' || 
-                                       product.categorie === selectedCategory ||
-                                       product.categorieId === selectedCategory ||
-                                       product.categorieId?.toString() === selectedCategory?.toString();
-                return matchesSearch && matchesCategory;
-              });
+              // Utiliser useMemo pour mémoriser les produits filtrés
+              const filteredProducts = useMemo(() => {
+                return products.filter(product => {
+                  // Filtrage par recherche avec debouncedSearchTerm
+                  const matchesSearch = !debouncedSearchTerm || 
+                    product.nom?.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) || 
+                    product.sku?.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
+                    product.description_courte?.toLowerCase().includes(debouncedSearchTerm.toLowerCase());
+                  
+                  // Filtrage par catégorie
+                  const matchesCategory = selectedCategory === 'all' || 
+                    product.categorieId === selectedCategory ||
+                    product.categorie_id === selectedCategory ||
+                    product.categorieId?.toString() === selectedCategory?.toString() ||
+                    product.categorie_id?.toString() === selectedCategory?.toString() ||
+                    (typeof product.categorie === 'object' && product.categorie?.id === selectedCategory) ||
+                    (typeof product.categorie === 'object' && product.categorie?.id?.toString() === selectedCategory?.toString());
+                  
+                  return matchesSearch && matchesCategory;
+                });
+              }, [products, debouncedSearchTerm, selectedCategory]);
               return filteredProducts.length === 0 ? (
               <div className="col-span-full flex flex-col items-center justify-center py-12">
                 <Package className="w-16 h-16 text-gray-400 mb-4" />
@@ -1973,12 +2429,21 @@ const StockPage: React.FC = () => {
         <div className="card-premium">
           <DataTable
             data={products.filter(product => {
-              const matchesSearch = !searchTerm || product.nom?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                                   product.sku?.toLowerCase().includes(searchTerm.toLowerCase());
+              // Filtrage par recherche
+              const matchesSearch = !searchTerm || 
+                product.nom?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                product.sku?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                product.description_courte?.toLowerCase().includes(searchTerm.toLowerCase());
+              
+              // Filtrage par catégorie
               const matchesCategory = selectedCategory === 'all' || 
-                                     product.categorie === selectedCategory ||
-                                     product.categorieId === selectedCategory ||
-                                     product.categorieId?.toString() === selectedCategory?.toString();
+                product.categorieId === selectedCategory ||
+                product.categorie_id === selectedCategory ||
+                product.categorieId?.toString() === selectedCategory?.toString() ||
+                product.categorie_id?.toString() === selectedCategory?.toString() ||
+                (typeof product.categorie === 'object' && product.categorie?.id === selectedCategory) ||
+                (typeof product.categorie === 'object' && product.categorie?.id?.toString() === selectedCategory?.toString());
+              
               return matchesSearch && matchesCategory;
             })}
             columns={[
@@ -1987,14 +2452,22 @@ const StockPage: React.FC = () => {
                 header: 'Produit',
                 cell: ({ row }) => (
                   <div className="flex items-center space-x-3">
-                    <img
-                      src={row.original.image}
-                      alt={row.original.nom}
-                      className="w-10 h-10 rounded-lg object-cover"
-                      onError={(e) => {
-                        e.currentTarget.src = 'https://images.pexels.com/photos/33239/wheat-field-wheat-yellow-grain.jpg?auto=compress&cs=tinysrgb&w=400&h=400&dpr=2';
-                      }}
-                    />
+                    {row.original.image ? (
+                      <img
+                        src={row.original.image}
+                        alt={row.original.nom}
+                        className="w-10 h-10 rounded-lg object-cover"
+                        onError={(e) => {
+                          console.error('❌ Erreur image dans tableau:', row.original.image);
+                          const target = e.currentTarget;
+                          target.style.display = 'none';
+                        }}
+                      />
+                    ) : (
+                      <div className="w-10 h-10 rounded-lg bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
+                        <Package className="w-5 h-5 text-gray-400" />
+                      </div>
+                    )}
                     <div>
                       <p className="font-medium text-gray-900 dark:text-white">
                         {row.original.nom}

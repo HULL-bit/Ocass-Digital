@@ -72,7 +72,7 @@ class ProduitViewSet(viewsets.ModelViewSet):
             'images'
         ).only(
             'id', 'nom', 'description_courte', 'categorie', 'marque', 'entreprise',
-            'sku', 'prix_vente', 'prix_promotion', 'statut', 'popularite_score',
+            'sku', 'prix_achat', 'prix_vente', 'prix_promotion', 'statut', 'popularite_score',
             'nombre_vues', 'nombre_ventes', 'slug', 'en_promotion',
             'vendable', 'visible_catalogue', 'date_creation', 'stock'
         ).order_by('-date_creation')  # Ajouter un ordre par défaut
@@ -82,11 +82,24 @@ class ProduitViewSet(viewsets.ModelViewSet):
             return base_queryset.filter(visible_catalogue=True, statut='actif')
         
         if user.type_utilisateur == 'admin':
-            return base_queryset.all()
-        elif user.type_utilisateur == 'entrepreneur' and user.entreprise:
-            return base_queryset.filter(entreprise=user.entreprise)
+            queryset = base_queryset.all()
+            print(f"📦 Admin: {queryset.count()} produits")
+            return queryset
+        elif user.type_utilisateur == 'entrepreneur':
+            if user.entreprise:
+                # Entrepreneur avec entreprise : retourner seulement ses produits
+                queryset = base_queryset.filter(entreprise=user.entreprise)
+                print(f"📦 Entrepreneur {user.email} avec entreprise {user.entreprise.id}: {queryset.count()} produits")
+                return queryset
+            else:
+                # Entrepreneur sans entreprise : retourner une liste vide
+                # (une entreprise sera créée lors de la première création de produit)
+                print(f"📦 Entrepreneur {user.email} SANS entreprise: 0 produits (entreprise sera créée lors de la première création)")
+                return base_queryset.none()
         else:
-            return base_queryset.filter(visible_catalogue=True, statut='actif')
+            queryset = base_queryset.filter(visible_catalogue=True, statut='actif')
+            print(f"📦 Utilisateur {user.type_utilisateur}: {queryset.count()} produits visibles")
+            return queryset
     
     def perform_create(self, serializer):
         """Override pour gérer la création de produits."""
@@ -307,16 +320,40 @@ class ProduitViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'])
     def ultra_fast_list(self, request):
-        """Liste ultra-rapide des produits avec pagination optimisée."""
+        """Liste ultra-rapide des produits avec pagination optimisée et cache."""
+        from django.core.cache import cache
+        
         page = int(request.GET.get('page', 1))
         page_size = min(int(request.GET.get('page_size', 15)), 50)  # Limiter à 50 max
         
-        # Requête ULTRA-optimisée - éviter les jointures coûteuses
-        queryset = Produit.objects.only(
-            'id', 'nom', 'sku', 'prix_vente', 'statut', 'stock', 'date_creation'
+        # Clé de cache basée sur la page et la taille
+        cache_key = f'ultra_fast_products_page_{page}_size_{page_size}'
+        cached_data = cache.get(cache_key)
+        
+        if cached_data:
+            return Response(cached_data)
+        
+        # Construire l'URL de base une seule fois
+        base_url = request.build_absolute_uri('/api/v1/products/products/ultra_fast_list/')
+        if '?' in base_url:
+            base_url = base_url.split('?')[0]
+        
+        # Construire les URLs d'images une seule fois
+        request_scheme = request.scheme
+        request_host = request.get_host()
+        media_base_url = f"{request_scheme}://{request_host}/media/"
+        
+        # Requête ultra-optimisée avec values() pour éviter le serializer
+        # Utiliser values() au lieu de serializer pour des performances maximales
+        queryset = Produit.objects.select_related(
+            'categorie'
         ).filter(
             visible_catalogue=True, 
             statut='actif'
+        ).values(
+            'id', 'nom', 'sku', 'prix_vente', 'prix_achat', 'statut', 'stock', 
+            'date_creation', 'description_courte', 'popularite_score', 
+            'nombre_ventes', 'categorie__nom', 'categorie__id'
         ).order_by('-date_creation')
         
         # Pagination manuelle pour éviter les requêtes lourdes
@@ -331,29 +368,91 @@ class ProduitViewSet(viewsets.ModelViewSet):
         if has_next:
             produits = produits[:page_size]  # Enlever le produit supplémentaire
         
-        # Serializer minimal - pas de jointures
+        # Récupérer les IDs des produits pour charger les images en une seule requête
+        produit_ids = [p['id'] for p in produits]
+        from .models import ImageProduit
+        images_map = {}
+        if produit_ids:
+            # Charger toutes les images en une seule requête - seulement la première image par produit
+            images = ImageProduit.objects.filter(
+                produit_id__in=produit_ids,
+                principale=True  # Prioriser les images principales
+            ).only('produit_id', 'image').order_by('produit_id', 'ordre_affichage')
+            
+            # Si pas d'image principale, prendre la première image
+            produits_with_images = {img.produit_id for img in images}
+            produits_without_images = set(produit_ids) - produits_with_images
+            
+            if produits_without_images:
+                # Récupérer la première image pour les produits sans image principale
+                additional_images = ImageProduit.objects.filter(
+                    produit_id__in=list(produits_without_images)
+                ).only('produit_id', 'image').order_by('produit_id', 'ordre_affichage').distinct('produit_id')
+                images = list(images) + list(additional_images)
+            
+            # Grouper les images par produit (une seule image par produit)
+            for img in images:
+                if img.produit_id not in images_map and img.image:
+                    image_url = f"{media_base_url}{img.image.name}"
+                    images_map[img.produit_id] = {
+                        'image_url': image_url,
+                        'image': img.image.name
+                    }
+        
+        # Construction directe des données sans serializer pour performance maximale
         data = []
         for produit in produits:
+            produit_id = produit['id']
+            # Récupérer l'image si disponible
+            product_image = images_map.get(produit_id)
+            
+            # Construire l'objet catégorie une seule fois
+            categorie_id = produit.get('categorie__id')
+            categorie_nom = produit.get('categorie__nom') or 'Non classé'
+            categorie_data = {
+                'id': categorie_id,
+                'nom': categorie_nom
+            }
+            
+            image_url = product_image['image_url'] if product_image else None
+            
             data.append({
-                'id': str(produit.id),
-                'nom': produit.nom,
-                'sku': produit.sku,
-                'prix_vente': float(produit.prix_vente),
-                'stock': produit.stock,
-                'categorie_nom': 'Non classé',  # Éviter la jointure
-                'marque_nom': 'Sans marque',    # Éviter la jointure
-                'statut': produit.statut
+                'id': str(produit_id),
+                'nom': produit['nom'],
+                'sku': produit.get('sku', ''),
+                'prix_vente': float(produit['prix_vente']) if produit.get('prix_vente') else 0,
+                'prix_achat': float(produit['prix_achat']) if produit.get('prix_achat') else None,
+                'stock': produit.get('stock', 0) or 0,
+                'description_courte': produit.get('description_courte', '') or '',
+                'popularite_score': produit.get('popularite_score', 0) or 0,
+                'nombre_ventes': produit.get('nombre_ventes', 0) or 0,
+                'categorie': categorie_data,
+                'categorie_nom': categorie_nom,
+                'image': image_url,
+                'image_url': image_url,
+                'statut': produit.get('statut', 'actif')
             })
+        
+        # Construire les URLs de pagination
+        next_url = None
+        previous_url = None
+        if has_next:
+            next_url = f'{base_url}?page={page + 1}&page_size={page_size}'
+        if page > 1:
+            previous_url = f'{base_url}?page={page - 1}&page_size={page_size}'
         
         response_data = {
             'results': data,
             'count': len(data),  # Pas de count total pour éviter la requête lourde
-            'next': f'?page={page + 1}&page_size={page_size}' if has_next else None,
-            'previous': f'?page={page - 1}&page_size={page_size}' if page > 1 else None,
+            'next': next_url,
+            'previous': previous_url,
             'page': page,
             'page_size': page_size,
             'has_next': has_next
         }
+        
+        # Mettre en cache pour 10 minutes (600 secondes) - production ready
+        cache.set(cache_key, response_data, 600)
         
         return Response(response_data)
     

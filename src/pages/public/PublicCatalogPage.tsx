@@ -1,8 +1,29 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Heart, Star, RefreshCw, Package } from 'lucide-react';
 import apiService from '../../services/api/realApi';
+import { getProductImageFromPublic } from '../../utils/publicProductImages';
+
+// Cache pour les images transformées
+const imageCache = new Map<string, string>();
+
+// Debounce helper
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+  
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+    
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+  
+  return debouncedValue;
+}
 
 const PublicCatalogPage: React.FC = () => {
   const navigate = useNavigate();
@@ -11,131 +32,116 @@ const PublicCatalogPage: React.FC = () => {
   const [page, setPage] = useState(1);
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [totalCount, setTotalCount] = useState(0);
+  const [hasNextPage, setHasNextPage] = useState(false);
   const pageSize = 12;
+  
+  // Debounce la recherche pour éviter trop de filtrages
+  const debouncedQuery = useDebounce(query, 300);
 
   // Charger les produits depuis l'API
   useEffect(() => {
     loadProducts();
-  }, []);
+  }, [page]);
 
-  const loadProducts = async () => {
+  const loadProducts = useCallback(async () => {
     try {
       setLoading(true);
-      console.log('Chargement de tous les produits pour le catalogue public...');
       
-      // Récupérer TOUS les produits sans pagination
-      let allProductsData = [];
+      // Utiliser l'endpoint ultra_fast_list qui est optimisé pour les performances
+      const response = await apiService.request(
+        `/products/products/ultra_fast_list/?page=${page}&page_size=${pageSize}`
+      );
       
-      try {
-        // Essayer d'abord getAllProducts() qui récupère tout
-        const allProducts = await apiService.getAllProducts();
-        console.log('Produits chargés via getAllProducts:', allProducts.length);
-        
-        if (Array.isArray(allProducts)) {
-          allProductsData = allProducts;
-        } else if (allProducts && Array.isArray(allProducts.results)) {
-          allProductsData = allProducts.results;
-        } else if (allProducts && Array.isArray(allProducts.data)) {
-          allProductsData = allProducts.data;
-        }
-      } catch (error) {
-        console.warn('Erreur avec getAllProducts, essai avec getProducts paginé:', error);
-        // Fallback: récupérer tous les produits avec pagination
-        let pageNum = 1;
-        let hasMore = true;
-        const productsPerPage = 100;
-        
-        while (hasMore && pageNum <= 10) { // Limite de sécurité
-          const params = new URLSearchParams();
-          params.append('page', pageNum.toString());
-          params.append('page_size', productsPerPage.toString());
+      if (response && response.results && Array.isArray(response.results)) {
+        // Transformer les données pour correspondre au format attendu - avec cache
+        const transformedProducts = response.results.map((product: any) => {
+          const productId = product.id || product.uuid;
+          const cacheKey = `${productId}-${product.nom || product.name}`;
           
-          try {
-            const response = await apiService.getProducts(params.toString());
-            if (response && response.results && Array.isArray(response.results)) {
-              allProductsData = allProductsData.concat(response.results);
-              hasMore = response.next && response.results.length === productsPerPage;
-              pageNum++;
-            } else {
-              hasMore = false;
-            }
-          } catch (pageError) {
-            console.error(`Erreur page ${pageNum}:`, pageError);
-            hasMore = false;
-          }
-        }
-      }
-      
-      console.log('Total produits récupérés:', allProductsData.length);
-      
-      // Transformer les données pour correspondre au format attendu
-      const transformedProducts = allProductsData
-        .filter((product: any) => {
-          // Filtrer uniquement les produits visibles dans le catalogue et actifs
-          return product.visible_catalogue !== false && product.statut === 'actif';
-        })
-        .map((product: any) => {
-          // Récupérer l'image du produit
-          let imageUrl = 'https://images.unsplash.com/photo-1557683316-973673baf926?q=80&w=800&auto=format&fit=crop';
-          if (product.images && product.images.length > 0) {
-            const firstImage = product.images[0];
-            imageUrl = firstImage.image_url || firstImage.image || imageUrl;
-            // Si l'URL ne commence pas par http, ajouter le préfixe du backend
-            if (imageUrl && !imageUrl.startsWith('http')) {
-              if (imageUrl.startsWith('/')) {
-                imageUrl = `http://localhost:8000${imageUrl}`;
-              } else {
-                imageUrl = `http://localhost:8000/${imageUrl}`;
-              }
-            }
-          } else if (product.image) {
-            imageUrl = product.image;
-            if (!imageUrl.startsWith('http')) {
-              if (imageUrl.startsWith('/')) {
-                imageUrl = `http://localhost:8000${imageUrl}`;
-              } else {
-                imageUrl = `http://localhost:8000/${imageUrl}`;
-              }
-            }
+          // Utiliser le cache pour les images
+          let imageUrl = imageCache.get(cacheKey);
+          if (!imageUrl) {
+            imageUrl = getProductImageFromPublic({
+              nom: product.nom,
+              name: product.name,
+              categorie: product.categorie,
+              categorie_nom: product.categorie?.nom || product.categorie_nom || product.categorie,
+              images: product.images || [],
+              image: product.image || product.image_url,
+              id: productId
+            });
+            imageCache.set(cacheKey, imageUrl);
           }
           
           return {
-            id: product.id || product.uuid,
+            id: productId,
             nom: product.nom || product.name || 'Produit sans nom',
             prix_vente: parseFloat(product.prix_vente || product.price || 0),
             image: imageUrl,
-            categorie: product.categorie?.nom || product.categorie || product.category || '',
+            categorie: product.categorie?.nom || product.categorie_nom || product.categorie || product.category || '',
             description_courte: product.description_courte || product.description || '',
             stock: product.stock || product.stock_actuel || product.stock_disponible || 0,
-            popularite_score: product.popularite_score || product.nombre_ventes || Math.floor(Math.random() * 100),
+            popularite_score: product.popularite_score || product.nombre_ventes || 0,
             nombre_ventes: product.nombre_ventes || product.ventes_count || 0,
             originalPrice: product.prix_achat ? Math.round(parseFloat(product.prix_achat) * 1.2) : undefined,
             discount: product.remise || undefined
           };
         });
-      
-      console.log('Produits transformés:', transformedProducts.length);
-      setProducts(transformedProducts);
-    } catch (error) {
-      console.error('Erreur lors du chargement des produits:', error);
+        
+        setProducts(transformedProducts);
+        setTotalCount(response.count || transformedProducts.length);
+        setHasNextPage(!!response.next);
+      } else {
+        setProducts([]);
+        setTotalCount(0);
+        setHasNextPage(false);
+      }
+    } catch (error: any) {
       setProducts([]);
+      setTotalCount(0);
+      setHasNextPage(false);
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, pageSize]);
 
-  const all = products;
+  // Filtrer et trier les produits de la page actuelle - optimisé avec useMemo et debounce
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    let arr = all.filter((p: any) => p.nom.toLowerCase().includes(q) || (p.categorie || '').toLowerCase().includes(q));
-    if (sort === 'popular') arr = arr.sort((a: any, b: any) => (b.popularite_score || 0) - (a.popularite_score || 0));
-    if (sort === 'price_asc') arr = arr.sort((a: any, b: any) => (a.prix_vente || 0) - (b.prix_vente || 0));
-    if (sort === 'price_desc') arr = arr.sort((a: any, b: any) => (b.prix_vente || 0) - (a.prix_vente || 0));
+    if (!products.length) return [];
+    
+    const q = debouncedQuery.trim().toLowerCase();
+    if (!q && sort === 'popular') {
+      // Si pas de recherche et tri par popularité, retourner directement les produits
+      return products;
+    }
+    
+    let arr = products;
+    
+    // Filtrer seulement si nécessaire
+    if (q) {
+      arr = products.filter((p: any) => {
+        const nom = (p.nom || '').toLowerCase();
+        const categorie = (p.categorie || '').toLowerCase();
+        const description = (p.description_courte || '').toLowerCase();
+        return nom.includes(q) || categorie.includes(q) || description.includes(q);
+      });
+    }
+    
+    // Trier seulement si nécessaire
+    if (sort === 'popular' && q) {
+      arr = arr.sort((a: any, b: any) => (b.popularite_score || 0) - (a.popularite_score || 0));
+    } else if (sort === 'price_asc') {
+      arr = arr.sort((a: any, b: any) => (a.prix_vente || 0) - (b.prix_vente || 0));
+    } else if (sort === 'price_desc') {
+      arr = arr.sort((a: any, b: any) => (b.prix_vente || 0) - (a.prix_vente || 0));
+    }
+    
     return arr;
-  }, [all, query, sort]);
+  }, [products, debouncedQuery, sort]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const current = filtered.slice((page - 1) * pageSize, page * pageSize);
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  const current = filtered;
 
   const formatXof = (n: number) => new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'XOF' }).format(n);
 
@@ -158,7 +164,7 @@ const PublicCatalogPage: React.FC = () => {
       <div className="mb-6 flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
         <input
           value={query}
-          onChange={(e) => { setQuery(e.target.value); setPage(1); }}
+          onChange={(e) => setQuery(e.target.value)}
           placeholder="Rechercher un produit..."
           className="w-full md:w-1/2 px-4 py-3 rounded-xl bg-white/60 dark:bg-dark-800 border border-gray-200 dark:border-gray-700 focus:outline-none"
         />
@@ -166,7 +172,7 @@ const PublicCatalogPage: React.FC = () => {
           <label className="text-sm text-gray-600 dark:text-gray-300">Trier par</label>
           <select
             value={sort}
-            onChange={(e) => { setSort(e.target.value as any); setPage(1); }}
+            onChange={(e) => setSort(e.target.value as any)}
             className="px-3 py-2 rounded-lg bg-white/60 dark:bg-dark-800 border border-gray-200 dark:border-gray-700"
           >
             <option value="popular">Popularité</option>
@@ -196,7 +202,7 @@ const PublicCatalogPage: React.FC = () => {
         <>
           {/* Grille style Jumia */}
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-            {current.map((p: any) => {
+            {current.map((p: any, index: number) => {
           const hasDiscount = p.originalPrice || p.discount;
           const original = p.originalPrice || (hasDiscount ? Math.round(p.prix_vente * 1.12) : undefined);
           const discount = original ? Math.max(0, Math.round(100 - (p.prix_vente / original) * 100)) : undefined;
@@ -204,11 +210,11 @@ const PublicCatalogPage: React.FC = () => {
           const reviews = p.nombre_ventes || Math.floor(Math.random() * 200) + 10;
           return (
           <motion.div
-            key={p.id}
+            key={`${p.id}-${index}`}
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.35 }}
+            viewport={{ once: true, margin: "-50px" }}
+            transition={{ duration: 0.15, delay: Math.min(index * 0.01, 0.2) }}
             className="relative overflow-hidden rounded-2xl bg-white dark:bg-dark-800 border border-gray-100 dark:border-gray-700 hover:shadow-2xl transition group"
           >
             <button className="absolute top-3 right-3 z-10 p-2 rounded-full bg-white/80 dark:bg-dark-900/60 border border-white/40 text-gray-600 dark:text-gray-200 hover:text-red-500">
@@ -254,17 +260,31 @@ const PublicCatalogPage: React.FC = () => {
 
           {/* Pagination */}
       <div className="mt-8 flex items-center justify-center gap-2">
-        <button disabled={page === 1} onClick={() => setPage((p) => Math.max(1, p - 1))} className="btn-secondary disabled:opacity-50">Précédent</button>
-        <div className="px-3 py-2 rounded-lg bg-white/60 dark:bg-dark-800 border border-gray-200 dark:border-gray-700 text-sm">Page {page} / {totalPages}</div>
-        <button disabled={page === totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))} className="btn-secondary disabled:opacity-50">Suivant</button>
+        <button 
+          disabled={page === 1 || loading} 
+          onClick={() => setPage((p) => Math.max(1, p - 1))} 
+          className="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Précédent
+        </button>
+        <div className="px-3 py-2 rounded-lg bg-white/60 dark:bg-dark-800 border border-gray-200 dark:border-gray-700 text-sm">
+          Page {page} / {totalPages}
+        </div>
+        <button 
+          disabled={!hasNextPage || loading} 
+          onClick={() => setPage((p) => p + 1)} 
+          className="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Suivant
+        </button>
       </div>
         </>
       )}
       
       {/* Compteur de produits */}
-      {!loading && products.length > 0 && (
+      {!loading && totalCount > 0 && (
         <div className="mt-6 text-center text-sm text-gray-600 dark:text-gray-400">
-          {filtered.length} produit(s) affiché(s) sur {products.length} total
+          {filtered.length} produit(s) affiché(s) sur {totalCount} total
         </div>
       )}
     </div>

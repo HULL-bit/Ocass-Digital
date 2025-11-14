@@ -43,6 +43,33 @@ class VenteSerializer(serializers.ModelSerializer):
     # Rendre numero_facture optionnel car il sera généré automatiquement
     numero_facture = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     
+    def validate_lignes_data(self, value):
+        """Valider que lignes_data est bien un tableau."""
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f'🔍 validate_lignes_data appelé avec: type={type(value)}, value={value}')
+        
+        # Cette méthode est appelée automatiquement par DRF
+        # Si value n'est pas une liste, DRF devrait déjà l'avoir converti
+        # Mais on ajoute une validation supplémentaire pour être sûr
+        if value is None:
+            logger.warn('⚠️ lignes_data est None, retour d\'un tableau vide')
+            return []
+        if not isinstance(value, list):
+            logger.warn(f'⚠️ lignes_data n\'est pas une liste, type: {type(value)}, conversion...')
+            # Si ce n'est pas une liste, essayer de la convertir
+            if isinstance(value, dict):
+                # Si c'est un dictionnaire, prendre les valeurs
+                value = list(value.values())
+                logger.info(f'✅ Converti depuis dict, nouvelle valeur: {value}')
+            else:
+                # Sinon, envelopper dans une liste
+                value = [value]
+                logger.info(f'✅ Enveloppé dans une liste, nouvelle valeur: {value}')
+        else:
+            logger.info(f'✅ lignes_data est déjà une liste avec {len(value)} éléments')
+        return value
+    
     class Meta:
         model = Vente
         fields = [
@@ -57,22 +84,46 @@ class VenteSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['entrepreneur', 'vendeur']
         extra_kwargs = {
-            'numero_facture': {'required': False, 'allow_blank': True}
+            'numero_facture': {'required': False, 'allow_blank': True},
+            'client': {'required': False, 'allow_null': True}
         }
     
     def create(self, validated_data):
         """Créer une vente avec ses lignes et décrémenter les stocks."""
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info('🔧 VenteSerializer.create appelé')
+        logger.info(f'📦 validated_data reçu: {list(validated_data.keys())}')
+        
         from django.db import transaction
         from apps.core.utils import generate_invoice_number
         
         # Extraire les lignes de vente
         lignes_data = validated_data.pop('lignes_data', [])
+        logger.info(f'📦 lignes_data extrait: type={type(lignes_data)}, length={len(lignes_data) if isinstance(lignes_data, list) else "N/A"}')
+        
+        # S'assurer que lignes_data est toujours un tableau
+        if not isinstance(lignes_data, list):
+            logger.warn(f'⚠️ lignes_data n\'est pas une liste dans create(), type: {type(lignes_data)}')
+            if lignes_data is None:
+                lignes_data = []
+            elif isinstance(lignes_data, dict):
+                # Si c'est un dictionnaire, convertir en liste de valeurs
+                lignes_data = list(lignes_data.values()) if lignes_data else []
+                logger.info(f'✅ Converti depuis dict dans create(), nouvelle valeur: {lignes_data}')
+            else:
+                # Sinon, envelopper dans une liste
+                lignes_data = [lignes_data]
+                logger.info(f'✅ Enveloppé dans une liste dans create(), nouvelle valeur: {lignes_data}')
         
         # Valider qu'il y a au moins une ligne de vente
         if not lignes_data:
+            logger.error('❌ Aucune ligne de vente trouvée')
             raise serializers.ValidationError({
                 'lignes_data': 'Au moins une ligne de vente est requise.'
             })
+        
+        logger.info(f'✅ {len(lignes_data)} ligne(s) de vente validée(s)')
         
         # Utiliser une transaction pour garantir la cohérence
         with transaction.atomic():

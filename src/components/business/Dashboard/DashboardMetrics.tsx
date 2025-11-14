@@ -80,18 +80,27 @@ const DashboardMetrics: React.FC<DashboardMetricsProps> = ({ userRole }) => {
       totalCompanies: dataToUse.totalCompanies
     });
     
-    // Mapper les données API vers les métriques selon le rôle avec des valeurs fixes
+    // Mapper les données API vers les métriques selon le rôle - TOUJOURS utiliser les vraies données
     if (userRole === 'admin') {
-      const revenue = Math.round(dataToUse.total_revenue || 17569631);
-      const users = dataToUse.users_count || 1247;
-      const companies = dataToUse.companies_count || 89;
-      const products = dataToUse.products_count || 2246;
-      const activeUsers = dataToUse.active_users_count || 171;
-      const newUsers = dataToUse.new_users_this_month || 67;
-      const newCompanies = dataToUse.new_companies_this_month || 7;
+      // TOUJOURS utiliser les vraies données, même si elles sont à 0 - PAS de fallback
+      const revenue = Math.round(dataToUse.total_revenue || 0);
+      const users = dataToUse.users_count ?? dataToUse.totalUsers ?? 0;
+      const companies = dataToUse.companies_count ?? dataToUse.totalCompanies ?? 0;
+      const products = dataToUse.products_count ?? dataToUse.totalProducts ?? 0;
+      const activeUsers = dataToUse.active_users_count ?? dataToUse.activeUsers ?? 0;
+      const newUsers = dataToUse.new_users_this_month ?? dataToUse.newUsersThisMonth ?? 0;
+      const newCompanies = dataToUse.new_companies_this_month ?? dataToUse.newCompaniesThisMonth ?? 0;
       
-      console.log('📈 Calculs admin:', {
-        revenue, users, companies, products, activeUsers, newUsers, newCompanies
+      console.log('📈 Calculs admin (VRAIES DONNÉES):', {
+        revenue, users, companies, products, activeUsers, newUsers, newCompanies,
+        rawData: {
+          users_count: dataToUse.users_count,
+          totalUsers: dataToUse.totalUsers,
+          active_users_count: dataToUse.active_users_count,
+          activeUsers: dataToUse.activeUsers,
+          new_users_this_month: dataToUse.new_users_this_month,
+          newUsersThisMonth: dataToUse.newUsersThisMonth
+        }
       });
       
       return [

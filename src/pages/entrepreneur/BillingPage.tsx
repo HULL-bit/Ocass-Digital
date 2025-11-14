@@ -27,13 +27,16 @@ import {
   BarChart3,
   RefreshCw
 } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 import Button from '../../components/ui/Button';
 import MetricCard from '../../components/ui/MetricCard';
 import AnimatedForm from '../../components/forms/AnimatedForm';
 import apiService from '../../services/api/realApi';
+import { useAuth } from '../../contexts/AuthContext';
 import * as yup from 'yup';
 
 const BillingPage: React.FC = () => {
+  const { user } = useAuth();
   const [selectedTab, setSelectedTab] = useState('invoices');
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
   const [showInvoiceForm, setShowInvoiceForm] = useState(false);
@@ -44,6 +47,18 @@ const BillingPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [error, setError] = useState<string | null>(null);
+  
+  // Informations de l'entreprise (avec valeurs par défaut)
+  const companyInfo = useMemo(() => {
+    const userCompany = (user as any)?.company;
+    const userEntreprise = (user as any)?.entreprise;
+    return {
+      nom: userCompany?.name || userEntreprise?.nom || 'BOUTIQUE KHADIJA MODE',
+      adresse: userCompany?.address || userEntreprise?.adresse_complete || 'Centre Commercial Sea Plaza - Boutique B12',
+      telephone: userCompany?.phone || userEntreprise?.telephone || '+221 77 123 45 67',
+      email: userCompany?.email || userEntreprise?.email || 'khadija.mode@seaplaza.sn'
+    };
+  }, [user]);
 
   // Charger les ventes depuis l'API
   useEffect(() => {
@@ -130,6 +145,20 @@ const BillingPage: React.FC = () => {
     setRefreshing(false);
   };
 
+  // Helper pour obtenir le statut de paiement réel (en tenant compte du statut de vente)
+  const getEffectivePaymentStatus = (sale: any): string => {
+    // Si la vente est confirmée, expédiée, livrée ou terminée, elle est considérée comme payée
+    if (['confirmee', 'expediee', 'livree', 'terminee'].includes(sale.statut)) {
+      return 'paid';
+    }
+    // Si la vente est annulée, retourner le statut d'annulation
+    if (sale.statut === 'annulee') {
+      return 'cancelled';
+    }
+    // Sinon, utiliser le statut de paiement
+    return sale.statut_paiement || 'pending';
+  };
+
   // Filtrer les ventes (optimisé avec useMemo)
   const filteredSales = useMemo(() => {
     return sales.filter(sale => {
@@ -137,10 +166,11 @@ const BillingPage: React.FC = () => {
         sale.numero_facture?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         sale.client_nom?.toLowerCase().includes(searchTerm.toLowerCase());
       
+      const effectiveStatus = getEffectivePaymentStatus(sale);
       const matchesStatus = statusFilter === 'all' || 
-        (statusFilter === 'paid' && sale.statut_paiement === 'paid') ||
-        (statusFilter === 'pending' && sale.statut_paiement === 'pending') ||
-        (statusFilter === 'cancelled' && sale.statut === 'annulee');
+        (statusFilter === 'paid' && effectiveStatus === 'paid') ||
+        (statusFilter === 'pending' && effectiveStatus === 'pending') ||
+        (statusFilter === 'cancelled' && effectiveStatus === 'cancelled');
       
       return matchesSearch && matchesStatus;
     });
@@ -172,8 +202,8 @@ const BillingPage: React.FC = () => {
     }, 0);
     
     const totalInvoices = monthlySales.length;
-    const pendingPayments = sales.filter(sale => sale.statut_paiement === 'pending').length;
-    const paidInvoices = sales.filter(sale => sale.statut_paiement === 'paid').length;
+    const pendingPayments = sales.filter(sale => getEffectivePaymentStatus(sale) === 'pending').length;
+    const paidInvoices = sales.filter(sale => getEffectivePaymentStatus(sale) === 'paid').length;
     const collectionRate = totalInvoices > 0 ? (paidInvoices / totalInvoices) * 100 : 0;
     
     return {
@@ -279,13 +309,69 @@ const BillingPage: React.FC = () => {
 
   // Confirmer une vente
   const confirmSale = async (saleId: string) => {
+    // Trouver la vente pour afficher les détails dans la confirmation
+    const sale = sales.find(s => s.id === saleId);
+    
+    if (!sale) {
+      toast.error('Vente introuvable');
+      return;
+    }
+    
+    // Demander confirmation
+    const confirmed = window.confirm(
+      `Confirmer la vente ${sale.numero_facture} ?\n\n` +
+      `Client: ${sale.client_nom || 'Client anonyme'}\n` +
+      `Montant: ${parseFloat(sale.total_ttc || 0).toLocaleString()} XOF\n\n` +
+      `Cette action marquera la vente comme confirmée et payée.`
+    );
+    
+    if (!confirmed) {
+      return;
+    }
+    
     try {
+      // Afficher un toast de chargement
+      const loadingToast = toast.loading('Confirmation de la vente en cours...');
+      
+      // Appeler l'API pour confirmer
       await apiService.confirmSale(saleId);
+      
+      // Mettre à jour le statut localement pour un feedback immédiat
+      setSales(prevSales => 
+        prevSales.map(s => 
+          s.id === saleId 
+            ? { 
+                ...s, 
+                statut: 'confirmee',
+                statut_paiement: 'paid' // Mettre à jour aussi le statut de paiement
+              }
+            : s
+        )
+      );
+      
+      // Recharger les ventes pour avoir les données à jour
       await refreshSales();
-      alert('Vente confirmée avec succès');
+      
+      // Fermer le toast de chargement et afficher le succès
+      toast.dismiss(loadingToast);
+      toast.success(`Vente ${sale.numero_facture} confirmée avec succès !`);
+      
     } catch (error: any) {
       console.error('Erreur lors de la confirmation:', error);
-      alert('Erreur lors de la confirmation de la vente');
+      
+      // Message d'erreur détaillé
+      let errorMessage = 'Erreur lors de la confirmation de la vente';
+      if (error.response?.status === 404) {
+        errorMessage = 'Vente introuvable';
+      } else if (error.response?.status === 400) {
+        errorMessage = error.response.data?.message || 'Impossible de confirmer cette vente';
+      } else if (error.response?.status === 403) {
+        errorMessage = 'Vous n\'avez pas les permissions nécessaires';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      toast.error(errorMessage);
     }
   };
 
@@ -307,12 +393,13 @@ const BillingPage: React.FC = () => {
   const tabs = [
     { id: 'invoices', label: 'Factures', count: sales.length },
     { id: 'quotes', label: 'Devis', count: 0 },
-    { id: 'payments', label: 'Paiements', count: sales.filter(s => s.statut_paiement === 'paid').length },
+    { id: 'payments', label: 'Paiements', count: sales.filter(s => getEffectivePaymentStatus(s) === 'paid').length },
     { id: 'reports', label: 'Rapports', count: 0 },
   ];
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
+  const getStatusIcon = (sale: any) => {
+    const effectiveStatus = getEffectivePaymentStatus(sale);
+    switch (effectiveStatus) {
       case 'paid':
       case 'completed':
         return <CheckCircle className="w-4 h-4 text-green-500" />;
@@ -327,8 +414,9 @@ const BillingPage: React.FC = () => {
     }
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
+  const getStatusColor = (sale: any) => {
+    const effectiveStatus = getEffectivePaymentStatus(sale);
+    switch (effectiveStatus) {
       case 'paid':
       case 'completed':
         return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
@@ -343,8 +431,9 @@ const BillingPage: React.FC = () => {
     }
   };
 
-  const getStatusText = (status: string) => {
-    switch (status) {
+  const getStatusText = (sale: any) => {
+    const effectiveStatus = getEffectivePaymentStatus(sale);
+    switch (effectiveStatus) {
       case 'paid':
       case 'completed':
         return 'Payée';
@@ -355,7 +444,7 @@ const BillingPage: React.FC = () => {
       case 'annulee':
         return 'Annulée';
       default:
-        return status;
+        return sale.statut_paiement || sale.statut || 'Inconnu';
     }
   };
 
@@ -536,9 +625,9 @@ const BillingPage: React.FC = () => {
                           <div className="flex items-center space-x-3 mb-2">
                             <span className="font-mono text-sm text-primary-600">{sale.numero_facture}</span>
                             <div className="flex items-center space-x-2">
-                              {getStatusIcon(sale.statut_paiement)}
-                              <span className={`text-xs px-2 py-1 rounded-full ${getStatusColor(sale.statut_paiement)}`}>
-                                {getStatusText(sale.statut_paiement)}
+                              {getStatusIcon(sale)}
+                              <span className={`text-xs px-2 py-1 rounded-full ${getStatusColor(sale)}`}>
+                                {getStatusText(sale)}
                               </span>
                             </div>
                           </div>
@@ -595,18 +684,26 @@ const BillingPage: React.FC = () => {
                               <Download className="w-3 h-3" />
                               PDF
                             </button>
-                            {sale.statut_paiement === 'pending' && (
-                              <button
-                                className="btn-primary text-sm px-3 py-1.5 inline-flex items-center gap-2"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  confirmSale(sale.id);
-                                }}
-                              >
-                                <CheckCircle className="w-3 h-3" />
-                                Confirmer
-                              </button>
-                            )}
+                            {(() => {
+                              const effectiveStatus = getEffectivePaymentStatus(sale);
+                              const isPending = effectiveStatus === 'pending' || effectiveStatus === 'en_attente';
+                              const isNotCancelled = sale.statut !== 'annulee';
+                              // Permettre la confirmation pour les statuts 'brouillon' et 'en_attente'
+                              const canBeConfirmed = ['brouillon', 'en_attente'].includes(sale.statut);
+                              
+                              return isPending && isNotCancelled && canBeConfirmed && (
+                                <button
+                                  className="btn-primary text-sm px-3 py-1.5 inline-flex items-center gap-2"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    confirmSale(sale.id);
+                                  }}
+                                >
+                                  <CheckCircle className="w-3 h-3" />
+                                  Confirmer
+                                </button>
+                              );
+                            })()}
                             {sale.statut !== 'annulee' && (
                               <button
                                 className="btn-secondary text-sm px-3 py-1.5 inline-flex items-center gap-2"
@@ -709,9 +806,9 @@ const BillingPage: React.FC = () => {
                     Facture {selectedInvoice.numero_facture}
                   </h2>
                   <div className="flex items-center space-x-3 mt-1">
-                    {getStatusIcon(selectedInvoice.statut)}
-                    <span className={`text-sm px-3 py-1 rounded-full ${getStatusColor(selectedInvoice.statut)}`}>
-                      {selectedInvoice.statut === 'payee' ? 'Payée' : 'En attente'}
+                    {getStatusIcon(selectedInvoice)}
+                    <span className={`text-sm px-3 py-1 rounded-full ${getStatusColor(selectedInvoice)}`}>
+                      {getStatusText(selectedInvoice)}
                     </span>
                   </div>
                 </div>
@@ -725,151 +822,158 @@ const BillingPage: React.FC = () => {
               </div>
 
               <div className="p-6">
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  {/* Invoice Details */}
-                  <div className="lg:col-span-2 space-y-6">
-                    {/* Client Info */}
-                    <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4">
-                      <h3 className="font-semibold text-gray-900 dark:text-white mb-3">Client</h3>
-                      <div className="space-y-2">
-                        <p className="font-medium text-gray-900 dark:text-white">
-                          {selectedInvoice.client_nom || selectedInvoice.client?.nom || 'Client anonyme'}
-                        </p>
-                        <p className="text-sm text-gray-600 dark:text-gray-400">
-                          {selectedInvoice.client_email || selectedInvoice.client?.email || 'Email non disponible'}
-                        </p>
-                        {selectedInvoice.client?.telephone && (
-                          <p className="text-sm text-gray-600 dark:text-gray-400">{selectedInvoice.client.telephone}</p>
-                        )}
-                        {selectedInvoice.adresse_livraison && (
-                          <p className="text-sm text-gray-600 dark:text-gray-400">{selectedInvoice.adresse_livraison}</p>
-                        )}
-                      </div>
+                {/* Ticket de caisse style facture */}
+                <div className="max-w-md mx-auto bg-white dark:bg-gray-900 p-6 border-2 border-gray-300 dark:border-gray-600 font-mono">
+                  {/* En-tête entreprise */}
+                  <div className="text-center mb-4">
+                    <div className="border-t-2 border-b-2 border-gray-800 dark:border-gray-400 py-2 mb-2">
+                      <h2 className="text-base font-bold text-gray-900 dark:text-white tracking-wide uppercase">
+                        {companyInfo.nom}
+                      </h2>
                     </div>
+                    <p className="text-xs text-gray-700 dark:text-gray-300">
+                      {companyInfo.adresse}
+                    </p>
+                    <p className="text-xs text-gray-700 dark:text-gray-300">
+                      Tel: {companyInfo.telephone}
+                    </p>
+                    <p className="text-xs text-gray-700 dark:text-gray-300">
+                      Email: {companyInfo.email}
+                    </p>
+                    <div className="border-t-2 border-b-2 border-gray-800 dark:border-gray-400 py-2 mt-2"></div>
+                  </div>
 
-                    {/* Invoice Lines */}
-                    <div>
-                      <h3 className="font-semibold text-gray-900 dark:text-white mb-4">Articles Vendus</h3>
-                      <div className="space-y-3">
-                        {selectedInvoice.lignes && selectedInvoice.lignes.length > 0 ? (
-                          selectedInvoice.lignes.map((ligne: any) => {
-                            // Récupérer l'image du produit
-                            let productImage = 'https://images.unsplash.com/photo-1557683316-973673baf926?q=80&w=200&auto=format&fit=crop';
-                            if (ligne.produit?.images && ligne.produit.images.length > 0) {
-                              const firstImage = ligne.produit.images[0];
-                              productImage = firstImage.image_url || firstImage.image || productImage;
-                            } else if (ligne.produit?.image) {
-                              productImage = ligne.produit.image;
-                            }
-                            
-                            return (
-                              <div key={ligne.id} className="flex items-center space-x-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-xl">
-                                <img
-                                  src={productImage}
-                                  alt={ligne.produit?.nom || 'Produit'}
-                                  className="w-16 h-16 rounded-lg object-cover"
-                                  onError={(e) => {
-                                    const target = e.currentTarget as HTMLImageElement;
-                                    target.src = 'https://images.unsplash.com/photo-1557683316-973673baf926?q=80&w=200&auto=format&fit=crop';
-                                  }}
-                                />
-                                <div className="flex-1">
-                                  <p className="font-medium text-gray-900 dark:text-white">
-                                    {ligne.produit?.nom || 'Produit'}
-                                  </p>
-                                  <p className="text-sm text-gray-500">{ligne.produit?.sku || 'SKU non disponible'}</p>
-                                  <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">
-                                    Quantité: {ligne.quantite || 1}
-                                  </p>
-                                </div>
-                                <div className="text-right">
-                                  <p className="font-semibold text-gray-900 dark:text-white">
-                                    {(ligne.total_ttc || ligne.prix_unitaire || 0).toLocaleString()} XOF
-                                  </p>
-                                  <p className="text-sm text-gray-500">
-                                    {ligne.quantite || 1} x {(ligne.prix_unitaire || 0).toLocaleString()} XOF
-                                  </p>
-                                </div>
-                              </div>
-                            );
-                          })
-                        ) : (
-                          <p className="text-gray-500 text-center py-4">Aucun article dans cette facture</p>
-                        )}
+                  {/* Titre FACTURE */}
+                  <div className="text-center mb-4">
+                    <h1 className="text-lg font-bold text-gray-900 dark:text-white mb-3">FACTURE</h1>
+                    <div className="space-y-1 text-xs text-gray-700 dark:text-gray-300 text-left">
+                      <p>N° Facture: {selectedInvoice.numero_facture || 'N/A'}</p>
+                      <p>
+                        Date: {new Date(selectedInvoice.date_creation || Date.now()).toLocaleDateString('fr-FR')} {' '}
+                        {new Date(selectedInvoice.date_creation || Date.now()).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                      <p>Client: {selectedInvoice.client_nom || selectedInvoice.client?.nom || 'Client anonyme'}</p>
+                      {selectedInvoice.client?.telephone && (
+                        <p>Tel: {selectedInvoice.client.telephone}</p>
+                      )}
+                    </div>
+                    <div className="border-t-2 border-b-2 border-gray-800 dark:border-gray-400 py-2 mt-2"></div>
+                  </div>
+
+                  {/* Tableau des articles */}
+                  <div className="mb-4">
+                    <div className="text-xs">
+                      <div className="flex justify-between mb-1 pb-1 border-b border-gray-400 dark:border-gray-500 font-semibold">
+                        <span className="flex-1">Designation</span>
+                        <span className="w-10 text-center">Qte</span>
+                        <span className="w-16 text-right">P.U.</span>
+                        <span className="w-20 text-right">Montant</span>
                       </div>
+                      <div className="border-b border-dashed border-gray-300 dark:border-gray-600 mb-1"></div>
+                      {selectedInvoice.lignes && selectedInvoice.lignes.length > 0 ? (
+                        selectedInvoice.lignes.map((ligne: any) => {
+                          const produitNom = ligne.produit?.nom || 'Produit';
+                          const quantite = ligne.quantite || 1;
+                          const prixUnitaire = ligne.prix_unitaire || 0;
+                          const montant = ligne.total_ttc || (prixUnitaire * quantite);
+                          
+                          // Tronquer le nom si trop long pour le format ticket
+                          const nomAffiche = produitNom.length > 20 ? produitNom.substring(0, 17) + '...' : produitNom;
+                          
+                          return (
+                            <div key={ligne.id} className="flex justify-between mb-1 text-xs">
+                              <span className="flex-1">{nomAffiche}</span>
+                              <span className="w-10 text-center">{quantite}</span>
+                              <span className="w-16 text-right">{prixUnitaire.toLocaleString()} F</span>
+                              <span className="w-20 text-right">{montant.toLocaleString()} F</span>
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <p className="text-center py-2 text-gray-500">Aucun article</p>
+                      )}
+                      <div className="border-b border-dashed border-gray-300 dark:border-gray-600 mt-2"></div>
                     </div>
                   </div>
 
-                  {/* Sidebar */}
-                  <div className="space-y-6">
-                    {/* Totals */}
-                    <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4">
-                      <h4 className="font-semibold text-gray-900 dark:text-white mb-3">Récapitulatif</h4>
-                      <div className="space-y-2">
-                        <div className="flex justify-between">
-                          <span className="text-sm text-gray-600 dark:text-gray-400">Sous-total</span>
-                          <span className="font-medium text-gray-900 dark:text-white">
-                            {(selectedInvoice.sous_total || selectedInvoice.total_ttc || 0).toLocaleString()} XOF
-                          </span>
+                  {/* Totaux */}
+                  <div className="mb-4 text-xs">
+                    <div className="text-right space-y-1">
+                      <div className="flex justify-end">
+                        <span className="mr-4">Sous-total:</span>
+                        <span className="w-20 text-right">{(selectedInvoice.sous_total || selectedInvoice.total_ttc || 0).toLocaleString()} F</span>
+                      </div>
+                      {(selectedInvoice.taxe_montant || selectedInvoice.tva_taux) && (
+                        <div className="flex justify-end">
+                          <span className="mr-4">TVA ({selectedInvoice.tva_taux || 18}%):</span>
+                          <span className="w-20 text-right">{(selectedInvoice.taxe_montant || 0).toLocaleString()} F</span>
                         </div>
-                        {(selectedInvoice.taxe_montant || selectedInvoice.tva_taux) && (
-                          <div className="flex justify-between">
-                            <span className="text-sm text-gray-600 dark:text-gray-400">
-                              TVA ({selectedInvoice.tva_taux || 18}%)
-                            </span>
-                            <span className="font-medium text-gray-900 dark:text-white">
-                              {(selectedInvoice.taxe_montant || 0).toLocaleString()} XOF
-                            </span>
-                          </div>
-                        )}
-                        <div className="border-t border-gray-300 dark:border-gray-600 pt-2">
-                          <div className="flex justify-between">
-                            <span className="font-bold text-gray-900 dark:text-white">Total TTC</span>
-                            <span className="text-xl font-bold text-primary-600">
-                              {(selectedInvoice.total_ttc || 0).toLocaleString()} XOF
-                            </span>
-                          </div>
+                      )}
+                      {selectedInvoice.remise && selectedInvoice.remise > 0 && (
+                        <div className="flex justify-end">
+                          <span className="mr-4">Remise:</span>
+                          <span className="w-20 text-right">- {selectedInvoice.remise.toLocaleString()} F</span>
+                        </div>
+                      )}
+                      <div className="border-t-2 border-gray-800 dark:border-gray-400 pt-2 mt-2">
+                        <div className="font-bold text-base flex justify-end">
+                          <span className="mr-4">TOTAL À PAYER:</span>
+                          <span className="w-20 text-right">{(selectedInvoice.total_ttc || 0).toLocaleString()} F</span>
                         </div>
                       </div>
                     </div>
-
-                    {/* Actions */}
-                    <div className="space-y-3">
-                      <Button
-                        variant="primary"
-                        fullWidth
-                        icon={<Edit className="w-4 h-4" />}
-                      >
-                        Modifier
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        fullWidth
-                        icon={<Printer className="w-4 h-4" />}
-                        onClick={() => {
-                          // Imprimer la facture
-                          handlePrintInvoice(selectedInvoice);
-                        }}
-                      >
-                        Imprimer
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        fullWidth
-                        icon={<Send className="w-4 h-4" />}
-                      >
-                        Envoyer par Email
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        fullWidth
-                        icon={<Download className="w-4 h-4" />}
-                        onClick={() => downloadInvoice(selectedInvoice.id, selectedInvoice.numero_facture)}
-                      >
-                        Télécharger PDF
-                      </Button>
-                    </div>
+                    <div className="border-t-2 border-b-2 border-gray-800 dark:border-gray-400 py-2 mt-2"></div>
                   </div>
+
+                  {/* Mode de paiement */}
+                  <div className="mb-4 text-xs">
+                    <p className="mb-2">Mode de paiement: {selectedInvoice.mode_paiement || 'Non spécifié'}</p>
+                    {selectedInvoice.mode_paiement === 'wave' && (
+                      <div className="mt-3 space-y-2">
+                        <p className="mb-2">Scannez ce QR code pour payer:</p>
+                        <div className="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg inline-block mb-2">
+                          <div className="w-32 h-32 bg-white dark:bg-gray-700 flex items-center justify-center text-xs text-gray-400 border-2 border-dashed border-gray-300 dark:border-gray-600">
+                            [QR CODE]
+                          </div>
+                        </div>
+                        <p className="text-xs text-gray-600 dark:text-gray-400 break-all">
+                          Ou cliquez sur: https://pay.wave.com/xyz123abc
+                        </p>
+                      </div>
+                    )}
+                    <div className="border-t-2 border-b-2 border-gray-800 dark:border-gray-400 py-2 mt-4"></div>
+                  </div>
+
+                  {/* Message de remerciement */}
+                  <div className="text-center text-xs text-gray-700 dark:text-gray-300">
+                    <p className="mb-1">Merci de votre confiance !</p>
+                    <p>Votre satisfaction est notre priorité</p>
+                    <div className="border-t-2 border-b-2 border-gray-800 dark:border-gray-400 py-2 mt-2"></div>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex justify-center gap-3 mt-6">
+                  <Button
+                    variant="secondary"
+                    icon={<Printer className="w-4 h-4" />}
+                    onClick={() => handlePrintInvoice(selectedInvoice)}
+                  >
+                    Imprimer
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    icon={<Download className="w-4 h-4" />}
+                    onClick={() => downloadInvoice(selectedInvoice.id, selectedInvoice.numero_facture)}
+                  >
+                    Télécharger PDF
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    icon={<Send className="w-4 h-4" />}
+                  >
+                    Envoyer par Email
+                  </Button>
                 </div>
               </div>
             </motion.div>

@@ -65,10 +65,23 @@ const MetricCard: React.FC<MetricCardProps> = ({
   };
 
   const calculateTrend = () => {
-    if (previousValue === undefined) return null;
+    if (previousValue === undefined || previousValue === null) return null;
     
     const change = value - previousValue;
-    const percentage = previousValue !== 0 ? (change / previousValue) * 100 : 0;
+    // Éviter la division par zéro et les valeurs Infinity
+    let percentage = 0;
+    if (previousValue > 0) {
+      percentage = (change / previousValue) * 100;
+      // Limiter le pourcentage à un maximum raisonnable (éviter Infinity)
+      if (!isFinite(percentage)) {
+        percentage = change > 0 ? 100 : -100;
+      }
+      // Limiter à ±1000% pour éviter les valeurs aberrantes
+      percentage = Math.max(-1000, Math.min(1000, percentage));
+    } else if (previousValue === 0 && value > 0) {
+      // Si la valeur précédente était 0 et qu'on a maintenant une valeur, c'est une nouvelle création
+      percentage = 100; // Afficher 100% au lieu de Infinity
+    }
     
     return {
       change,
@@ -133,7 +146,7 @@ const MetricCard: React.FC<MetricCardProps> = ({
           )}
         </div>
         
-        {trend && (
+        {trend && isFinite(trend.percentage) && (
           <div className={`flex items-center space-x-1 ${getTrendColor()}`}>
             {getTrendIcon()}
             <span className="text-sm font-medium">

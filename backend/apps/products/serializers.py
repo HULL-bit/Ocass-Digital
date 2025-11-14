@@ -45,17 +45,43 @@ class ImageProduitSerializer(serializers.ModelSerializer):
         """Retourne l'URL complète de l'image."""
         if obj.image:
             request = self.context.get('request')
+            
+            # Obtenir le chemin de l'image depuis le champ ImageField
+            try:
+                # obj.image.url retourne déjà le chemin relatif depuis MEDIA_URL
+                # Par exemple: /media/produits/filename.jpg
+                image_path = obj.image.url
+            except Exception as e:
+                # Si .url échoue, utiliser le nom du fichier et construire le chemin
+                image_name = obj.image.name if hasattr(obj.image, 'name') else str(obj.image)
+                # Le nom est généralement "produits/filename.jpg", on doit ajouter /media/
+                if image_name.startswith('produits/'):
+                    image_path = f"/media/{image_name}"
+                elif image_name.startswith('/media/'):
+                    image_path = image_name
+                else:
+                    image_path = f"/media/produits/{image_name}"
+            
+            # S'assurer que le chemin commence bien par /media/
+            if not image_path.startswith('/media/'):
+                if image_path.startswith('/'):
+                    # Si commence par / mais pas /media/, ajouter /media
+                    image_path = f"/media{image_path}"
+                else:
+                    # Si ne commence pas par /, ajouter /media/
+                    image_path = f"/media/{image_path}"
+            
             if request:
                 # Construire l'URL absolue avec le domaine
-                return request.build_absolute_uri(obj.image.url)
+                try:
+                    return request.build_absolute_uri(image_path)
+                except:
+                    # Si build_absolute_uri échoue, construire manuellement
+                    return f"{request.scheme}://{request.get_host()}{image_path}"
             else:
                 # Fallback si pas de requête dans le contexte
                 from django.conf import settings
-                base_url = 'http://localhost:8000'
-                image_path = obj.image.url if hasattr(obj.image, 'url') else str(obj.image)
-                # S'assurer que le chemin commence par /media/
-                if not image_path.startswith('/media/'):
-                    image_path = f"/media/{image_path}"
+                base_url = getattr(settings, 'BASE_URL', 'http://localhost:8000')
                 return f"{base_url}{image_path}"
         return None
 
@@ -90,9 +116,9 @@ class ProduitListSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'nom', 'description_courte', 'categorie', 'categorie_nom',
             'marque', 'marque_nom', 'entreprise', 'entreprise_nom', 'sku',
-            'prix_vente', 'prix_promotion', 'statut', 'popularite_score',
+            'prix_achat', 'prix_vente', 'prix_promotion', 'statut', 'popularite_score',
             'nombre_vues', 'nombre_ventes', 'slug', 'en_promotion',
-            'vendable', 'visible_catalogue', 'stock_actuel', 'stock_disponible',
+            'vendable', 'visible_catalogue', 'stock', 'stock_actuel', 'stock_disponible',
             'en_rupture', 'stock_bas', 'images'
         ]
     
@@ -101,7 +127,18 @@ class ProduitListSerializer(serializers.ModelSerializer):
         first_image = obj.images.first()
         if first_image:
             serializer = ImageProduitSerializer(first_image, context=self.context)
-            return [serializer.data]
+            image_data = serializer.data
+            # Log pour debug (seulement si pas d'image_url)
+            if not image_data.get('image_url'):
+                print(f"⚠️ Produit {obj.nom} (SKU: {obj.sku}) - image_url manquant:")
+                print(f"   - image_data: {image_data}")
+                print(f"   - image.name: {first_image.image.name if first_image.image else 'None'}")
+                print(f"   - context.request: {self.context.get('request') is not None}")
+            return [image_data]
+        else:
+            # Log seulement pour les premiers produits pour éviter trop de logs
+            if obj.id and hash(str(obj.id)) % 10 == 0:  # Log 1 produit sur 10
+                print(f"⚠️ Produit {obj.nom} (SKU: {obj.sku}) n'a pas d'image associée")
         return []
 
 

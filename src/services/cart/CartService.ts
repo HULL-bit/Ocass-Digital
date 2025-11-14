@@ -45,10 +45,28 @@ class CartService {
       const savedCart = localStorage.getItem('cart');
       if (savedCart) {
         const cartData = JSON.parse(savedCart);
-        this.cartItems = cartData.map((item: any) => ({
+        // Filtrer les produits mock lors du chargement
+        const validCart = cartData.filter((item: any) => {
+          const productId = item.id || item.product?.id || '';
+          const productIdStr = String(productId).trim();
+          const isMock = productIdStr.toLowerCase().startsWith('mock-');
+          if (isMock) {
+            console.log('🗑️ Produit mock supprimé au chargement:', productIdStr);
+          }
+          return !isMock;
+        });
+        
+        this.cartItems = validCart.map((item: any) => ({
           ...item,
           addedAt: new Date(item.addedAt)
         }));
+        
+        // Si des produits mock ont été filtrés, sauvegarder le panier nettoyé
+        if (validCart.length < cartData.length) {
+          const removedCount = cartData.length - validCart.length;
+          console.log(`🧹 ${removedCount} produit(s) mock supprimé(s) du panier au chargement`);
+          this.saveCartToStorage();
+        }
       }
     } catch (error) {
       console.error('Erreur lors du chargement du panier:', error);
@@ -129,6 +147,13 @@ class CartService {
 
       if (!product.id) {
         console.error('❌ Produit sans ID:', product);
+        return false;
+      }
+      
+      // REJETER IMMÉDIATEMENT les produits mock
+      const productIdStr = String(product.id).trim();
+      if (productIdStr.toLowerCase().startsWith('mock-')) {
+        console.error('❌ Tentative d\'ajout d\'un produit mock bloquée:', productIdStr, product.nom || product.name);
         return false;
       }
 
@@ -235,6 +260,35 @@ class CartService {
       this.dispatchCartEvent();
     } catch (error) {
       console.error('Erreur lors du vidage du panier:', error);
+    }
+  }
+
+  /**
+   * Supprimer tous les produits mock du panier
+   */
+  public removeMockProducts(): number {
+    try {
+      const initialLength = this.cartItems.length;
+      this.cartItems = this.cartItems.filter(item => {
+        const productId = item.id || item.product?.id || '';
+        const productIdStr = String(productId).trim();
+        const isMock = productIdStr.toLowerCase().startsWith('mock-');
+        if (isMock) {
+          console.log('🗑️ Produit mock supprimé du panier:', productIdStr, item.product?.nom || item.product?.name);
+        }
+        return !isMock;
+      });
+      
+      const removedCount = initialLength - this.cartItems.length;
+      if (removedCount > 0) {
+        this.saveCartToStorage();
+        this.dispatchCartEvent();
+        console.log(`✅ ${removedCount} produit(s) mock supprimé(s) du panier`);
+      }
+      return removedCount;
+    } catch (error) {
+      console.error('Erreur lors de la suppression des produits mock:', error);
+      return 0;
     }
   }
 

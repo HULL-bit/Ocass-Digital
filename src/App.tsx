@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Provider } from 'react-redux';
 import { Toaster } from 'react-hot-toast';
@@ -7,17 +7,19 @@ import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { NotificationProvider } from './contexts/NotificationContext';
 import AutoSyncManager from './components/sync/AutoSyncManager';
-import AdminLayout from './layouts/AdminLayout';
-import EntrepreneurLayout from './layouts/EntrepreneurLayout';
-import ClientLayout from './layouts/ClientLayout';
-import AuthLayout from './layouts/AuthLayout';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import LoadingScreen from './components/ui/LoadingScreen';
 import ErrorBoundary from './components/ui/ErrorBoundary';
 import ParticlesBackground from './components/ui/ParticlesBackground';
 import './index.css';
-import LandingPage from './pages/public/LandingPage';
-import PublicCatalogPage from './pages/public/PublicCatalogPage';
+
+// Lazy loading des layouts et pages pour code splitting
+const AdminLayout = lazy(() => import('./layouts/AdminLayout'));
+const EntrepreneurLayout = lazy(() => import('./layouts/EntrepreneurLayout'));
+const ClientLayout = lazy(() => import('./layouts/ClientLayout'));
+const AuthLayout = lazy(() => import('./layouts/AuthLayout'));
+const LandingPage = lazy(() => import('./pages/public/LandingPage'));
+const PublicCatalogPage = lazy(() => import('./pages/public/PublicCatalogPage'));
 
 function App() {
   return (
@@ -32,14 +34,23 @@ function App() {
                     <ParticlesBackground />
                   <Routes>
                     {/* Routes d'authentification */}
-                    <Route path="/auth/*" element={<AuthLayout />} />
+                    <Route 
+                      path="/auth/*" 
+                      element={
+                        <Suspense fallback={<LoadingScreen />}>
+                          <AuthLayout />
+                        </Suspense>
+                      } 
+                    />
                     
                     {/* Routes Admin */}
                     <Route 
                       path="/admin/*" 
                       element={
                         <ProtectedRoute requiredRole="admin">
-                          <AdminLayout />
+                          <Suspense fallback={<LoadingScreen />}>
+                            <AdminLayout />
+                          </Suspense>
                         </ProtectedRoute>
                       } 
                     />
@@ -49,7 +60,9 @@ function App() {
                       path="/entrepreneur/*" 
                       element={
                         <ProtectedRoute requiredRole="entrepreneur">
-                          <EntrepreneurLayout />
+                          <Suspense fallback={<LoadingScreen />}>
+                            <EntrepreneurLayout />
+                          </Suspense>
                         </ProtectedRoute>
                       } 
                     />
@@ -59,14 +72,30 @@ function App() {
                       path="/client/*" 
                       element={
                         <ProtectedRoute requiredRole="client">
-                          <ClientLayout />
+                          <Suspense fallback={<LoadingScreen />}>
+                            <ClientLayout />
+                          </Suspense>
                         </ProtectedRoute>
                       } 
                     />
                     
                     {/* Pages publiques */}
-                    <Route path="/" element={<LandingPage />} />
-                    <Route path="/catalogue" element={<PublicCatalogPage />} />
+                    <Route 
+                      path="/" 
+                      element={
+                        <Suspense fallback={<LoadingScreen />}>
+                          <LandingPage />
+                        </Suspense>
+                      } 
+                    />
+                    <Route 
+                      path="/catalogue" 
+                      element={
+                        <Suspense fallback={<LoadingScreen />}>
+                          <PublicCatalogPage />
+                        </Suspense>
+                      } 
+                    />
                     <Route path="*" element={<Navigate to="/auth/login" replace />} />
                   </Routes>
                 </div>

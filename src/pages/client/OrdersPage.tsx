@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useLocation } from 'react-router-dom';
 import apiService from '../../services/api/realApi';
+import { useAuth } from '../../contexts/AuthContext';
+import { useNotifications } from '../../contexts/NotificationContext';
 import { 
   Package, 
   Search, 
@@ -26,11 +29,62 @@ import {
 import Button from '../../components/ui/Button';
 
 const OrdersPage: React.FC = () => {
+  const location = useLocation();
+  const { user } = useAuth();
+  const { addNotification } = useNotifications();
   const [selectedTab, setSelectedTab] = useState('all');
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // Afficher un message de succès si on vient d'une commande et recharger les commandes
+  useEffect(() => {
+    if (location.state?.message || location.state?.refresh || location.state?.newOrder) {
+      console.log('📦 État de navigation reçu:', location.state);
+      
+      // Afficher une notification de succès si un message est fourni
+      if (location.state?.message) {
+        addNotification({
+          type: 'success',
+          title: 'Commande confirmée !',
+          message: location.state.message,
+        });
+      }
+      
+      // Recharger immédiatement
+      console.log('🔄 Rechargement immédiat des commandes...');
+      loadOrders();
+      
+      // Attendre un peu pour que la commande soit bien enregistrée côté serveur
+      const timer1 = setTimeout(() => {
+        console.log('🔄 Premier rechargement des commandes (1.5s)...');
+        loadOrders();
+      }, 1500);
+      
+      // Recharger une deuxième fois après un délai plus long
+      const timer2 = setTimeout(() => {
+        console.log('🔄 Deuxième rechargement des commandes (3s)...');
+        loadOrders();
+      }, 3000);
+      
+      // Recharger une troisième fois après un délai encore plus long
+      const timer3 = setTimeout(() => {
+        console.log('🔄 Troisième rechargement des commandes (5s)...');
+        loadOrders();
+      }, 5000);
+      
+      // Nettoyer l'état pour éviter de réafficher le message
+      window.history.replaceState({}, document.title);
+      
+      return () => {
+        clearTimeout(timer1);
+        clearTimeout(timer2);
+        clearTimeout(timer3);
+      };
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state]);
 
   // Charger les commandes depuis l'API
   useEffect(() => {
@@ -40,12 +94,83 @@ const OrdersPage: React.FC = () => {
   const loadOrders = async () => {
     try {
       setLoading(true);
+      console.log('🔄 ========== CHARGEMENT DES COMMANDES ==========');
+      console.log('👤 Utilisateur connecté:', {
+        email: user?.email,
+        id: user?.id,
+        type: user?.type_utilisateur
+      });
+      
+      if (!user?.email) {
+        console.error('❌ ERREUR: Aucun email utilisateur trouvé!');
+        setOrders([]);
+        setLoading(false);
+        return;
+      }
       
       // Charger les commandes depuis l'API
-      const ordersData = await apiService.getClientOrders({ page_size: 100 });
+      console.log('📞 Appel à apiService.getClientOrders...');
+      let ordersData = await apiService.getClientOrders({ page_size: 100 });
+      
+      console.log('📦 Réponse API brute:', ordersData);
+      console.log('📦 Type de réponse:', typeof ordersData);
+      console.log('📦 Est un tableau?', Array.isArray(ordersData));
+      console.log('📦 Nombre de commandes:', Array.isArray(ordersData) ? ordersData.length : 'Non-array');
+      
+      if (!Array.isArray(ordersData)) {
+        console.error('❌ ERREUR: Les commandes ne sont pas un tableau!');
+        console.error('❌ Type:', typeof ordersData);
+        console.error('❌ Valeur:', ordersData);
+        if (ordersData && typeof ordersData === 'object') {
+          console.error('❌ Clés:', Object.keys(ordersData));
+          console.error('❌ Structure complète:', JSON.stringify(ordersData, null, 2));
+        }
+        // Essayer de récupérer les résultats même si ce n'est pas un tableau
+        if (ordersData && typeof ordersData === 'object' && 'results' in ordersData) {
+          console.warn('⚠️ Tentative de récupération depuis response.results...');
+          const extracted = (ordersData as any).results;
+          if (Array.isArray(extracted)) {
+            console.log('✅ Extraction réussie depuis results:', extracted.length);
+            // Continuer avec extracted comme si c'était ordersData
+            ordersData = extracted;
+          }
+        }
+      }
+      
+      // S'assurer que ordersData est un tableau
+      if (!Array.isArray(ordersData)) {
+        console.error('❌ Impossible de convertir ordersData en tableau');
+        console.error('❌ Valeur finale:', ordersData);
+        setOrders([]);
+        setLoading(false);
+        return;
+      }
+      
+      console.log(`✅ ${ordersData.length} commande(s) reçue(s) de l'API`);
+      
+      if (ordersData.length === 0) {
+        console.warn('⚠️ AUCUNE COMMANDE TROUVÉE!');
+        console.warn('⚠️ Vérifiez que:');
+        console.warn('   1. Des commandes ont été créées avec succès');
+        console.warn('   2. L\'email de l\'utilisateur correspond à celui utilisé lors de la création');
+        console.warn('   3. Les logs du backend montrent des commandes trouvées');
+        setOrders([]);
+        setLoading(false);
+        return;
+      }
       
       // Transformer les données de l'API en format utilisable
-      const transformedOrders = ordersData.map((order: any) => {
+      console.log('🔄 Transformation des commandes...');
+      const transformedOrders = (ordersData || []).map((order: any, index: number) => {
+        console.log(`📦 Commande ${index + 1}:`, {
+          id: order.id,
+          numero_facture: order.numero_facture,
+          client_id: order.client,
+          client_email: order.client_email || order.client?.email,
+          statut: order.statut,
+          total_ttc: order.total_ttc,
+          lignes_count: order.lignes?.length || 0
+        });
         // Mapper les statuts
         const statusMap: Record<string, string> = {
           'en_attente': 'processing',
@@ -60,20 +185,45 @@ const OrdersPage: React.FC = () => {
         
         // Transformer les lignes de vente en items
         const items = (order.lignes || []).map((ligne: any) => {
-          // Récupérer l'image du produit
-          let imageUrl = 'https://images.unsplash.com/photo-1557683316-973673baf926?q=80&w=200&auto=format&fit=crop';
+          // Récupérer l'image du produit - PRIORITÉ AUX IMAGES LOCALES
+          let imageUrl: string | null = null;
           if (ligne.produit?.images && ligne.produit.images.length > 0) {
             const firstImage = ligne.produit.images[0];
-            imageUrl = firstImage.image_url || firstImage.image || imageUrl;
-          } else if (ligne.produit?.image) {
-            imageUrl = ligne.produit.image;
+            if (firstImage.image_url && typeof firstImage.image_url === 'string') {
+              imageUrl = firstImage.image_url;
+            } else if (firstImage.image && typeof firstImage.image === 'string') {
+              if (firstImage.image.startsWith('http')) {
+                imageUrl = firstImage.image;
+              } else {
+                const imagePath = firstImage.image.startsWith('/') ? firstImage.image : `/media/${firstImage.image}`;
+                imageUrl = `http://localhost:8000${imagePath}`;
+              }
+            }
+          } else if (ligne.produit?.image && typeof ligne.produit.image === 'string') {
+            if (ligne.produit.image.startsWith('http')) {
+              imageUrl = ligne.produit.image;
+            } else {
+              const imagePath = ligne.produit.image.startsWith('/') ? ligne.produit.image : `/media/${ligne.produit.image}`;
+              imageUrl = `http://localhost:8000${imagePath}`;
+            }
           }
+          
+          // SEULEMENT si aucune image locale n'a été trouvée, utiliser une image par défaut
+          if (!imageUrl) {
+            imageUrl = 'https://images.unsplash.com/photo-1557683316-973673baf926?q=80&w=200&auto=format&fit=crop';
+          }
+          
+          // Calculer le prix unitaire et le total
+          const quantite = ligne.quantite || 1;
+          const prixUnitaire = parseFloat(ligne.prix_unitaire || 0);
+          const totalLigne = parseFloat(ligne.total_ttc || (prixUnitaire * quantite) || 0);
           
           return {
             id: ligne.id || ligne.produit?.id,
             name: ligne.produit?.nom || 'Produit',
-            quantity: ligne.quantite || 1,
-            price: parseFloat(ligne.total_ttc || ligne.prix_unitaire || 0),
+            quantity: quantite,
+            price: totalLigne,
+            prixUnitaire: prixUnitaire,
             image: imageUrl
           };
         });
@@ -116,10 +266,31 @@ const OrdersPage: React.FC = () => {
         };
       });
       
-      setOrders(transformedOrders);
+      // Trier par date de création (plus récentes en premier)
+      const sortedOrders = transformedOrders.sort((a: any, b: any) => {
+        const dateA = new Date(a.date || 0).getTime();
+        const dateB = new Date(b.date || 0).getTime();
+        return dateB - dateA;
+      });
+      
+      setOrders(sortedOrders);
+      console.log('✅ Commandes transformées et triées:', sortedOrders.length);
+      if (sortedOrders.length > 0) {
+        console.log('📋 Première commande:', {
+          id: sortedOrders[0].id,
+          numero_facture: sortedOrders[0].numero_facture,
+          date: sortedOrders[0].date,
+          total: sortedOrders[0].total
+        });
+      }
     } catch (error) {
-      console.error('Erreur lors du chargement des commandes:', error);
+      console.error('❌ Erreur lors du chargement des commandes:', error);
       setOrders([]);
+      addNotification({
+        type: 'error',
+        title: 'Erreur de chargement',
+        message: 'Impossible de charger votre historique de commandes. Veuillez réessayer.',
+      });
     } finally {
       setLoading(false);
     }
@@ -139,74 +310,261 @@ const OrdersPage: React.FC = () => {
     }
   };
   
-  // Imprimer une facture
+  // Imprimer une facture avec style ticket/reçu
   const handlePrintInvoice = async (order: any) => {
     try {
-      if (order.rawData?.id) {
-        const response = await apiService.generateInvoicePDF(order.rawData.id);
-        if (response.pdf_url) {
-          window.open(response.pdf_url, '_blank');
-        } else {
-          // Fallback: ouvrir dans un nouvel onglet pour impression
-          const printWindow = window.open('', '_blank');
-          if (printWindow) {
-            printWindow.document.write(`
+      // Toujours utiliser la version HTML pour l'impression (plus fiable)
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        alert('Veuillez autoriser les pop-ups pour imprimer la facture');
+        return;
+      }
+      
+      const invoiceData = order.rawData || order;
+      
+      // Essayer de récupérer les détails complets de la commande si nécessaire
+      let fullOrderData = invoiceData;
+      if (order.rawData?.id && (!invoiceData.lignes || invoiceData.lignes.length === 0)) {
+        try {
+          const orderDetails = await apiService.getSale(order.rawData.id);
+          fullOrderData = orderDetails || invoiceData;
+        } catch (error) {
+          console.warn('Impossible de récupérer les détails complets, utilisation des données disponibles');
+        }
+      }
+      
+      // Utiliser fullOrderData pour les lignes, sinon invoiceData
+      const dataToUse = (fullOrderData.lignes && fullOrderData.lignes.length > 0) ? fullOrderData : invoiceData;
+      
+      // Récupérer les informations de l'entreprise depuis la commande
+      const companyInfo = {
+        nom: invoiceData.entrepreneur_nom || order.seller?.name || 'Entreprise',
+        adresse: invoiceData.entrepreneur?.entreprise?.adresse_complete || 
+                order.shipping?.address?.split(',')[0] || 'Adresse non spécifiée',
+        telephone: invoiceData.entrepreneur?.entreprise?.telephone || 
+                   invoiceData.entrepreneur?.telephone || 
+                   order.seller?.telephone || 
+                   '+221 XX XXX XX XX',
+        email: invoiceData.entrepreneur?.entreprise?.email || 
+               invoiceData.entrepreneur?.email || 
+               order.seller?.email || 
+               'email@example.com'
+      };
+      
+      // Récupérer les informations du client
+      const clientInfo = {
+              nom: invoiceData.client_nom || 
+             invoiceData.client?.nom || 
+             (invoiceData.client?.prenom && invoiceData.client?.nom ? 
+              `${invoiceData.client.prenom} ${invoiceData.client.nom}` : 
+              invoiceData.client?.prenom || invoiceData.client?.nom || user?.firstName || 'Client'),
+        telephone: invoiceData.client?.telephone || 
+                  invoiceData.client_telephone || 
+                  (user as any)?.telephone || 
+                  ''
+      };
+      
+      // Préparer les lignes pour l'affichage
+      const lignesToDisplay = dataToUse.lignes || order.items || [];
+      
+      printWindow.document.write(`
+              <!DOCTYPE html>
               <html>
                 <head>
                   <title>Facture ${order.numero_facture || order.id}</title>
                   <style>
-                    body { font-family: Arial, sans-serif; padding: 20px; }
-                    .header { text-align: center; margin-bottom: 30px; }
-                    .info { margin-bottom: 20px; }
-                    table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-                    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-                    th { background-color: #f2f2f2; }
-                    .total { text-align: right; font-weight: bold; margin-top: 20px; }
+                    @media print {
+                      @page { margin: 0; size: auto; }
+                      body { margin: 0; }
+                    }
+                    body { 
+                      font-family: 'Courier New', monospace; 
+                      padding: 20px; 
+                      max-width: 400px; 
+                      margin: 0 auto;
+                      background: white;
+                      color: black;
+                    }
+                    .invoice-container {
+                      border: 2px solid #000;
+                      padding: 20px;
+                      background: white;
+                    }
+                    .header-line {
+                      border-top: 2px solid #000;
+                      border-bottom: 2px solid #000;
+                      padding: 10px 0;
+                      margin: 10px 0;
+                    }
+                    .company-name {
+                      font-size: 16px;
+                      font-weight: bold;
+                      text-align: center;
+                      text-transform: uppercase;
+                      letter-spacing: 1px;
+                    }
+                    .company-info {
+                      font-size: 11px;
+                      text-align: center;
+                      margin: 5px 0;
+                    }
+                    .invoice-title {
+                      font-size: 18px;
+                      font-weight: bold;
+                      text-align: center;
+                      margin: 15px 0;
+                    }
+                    .invoice-info {
+                      font-size: 11px;
+                      margin: 5px 0;
+                    }
+                    .items-header {
+                      display: flex;
+                      justify-content: space-between;
+                      font-weight: bold;
+                      font-size: 11px;
+                      padding: 5px 0;
+                      border-bottom: 1px solid #000;
+                      margin: 10px 0 5px 0;
+                    }
+                    .item-row {
+                      display: flex;
+                      justify-content: space-between;
+                      font-size: 11px;
+                      padding: 3px 0;
+                    }
+                    .item-name { flex: 1; }
+                    .item-qty { width: 40px; text-align: center; }
+                    .item-price { width: 80px; text-align: right; }
+                    .item-total { width: 90px; text-align: right; }
+                    .dashed-line {
+                      border-bottom: 1px dashed #666;
+                      margin: 10px 0;
+                    }
+                    .totals {
+                      font-size: 11px;
+                      text-align: right;
+                      margin: 10px 0;
+                    }
+                    .total-row {
+                      display: flex;
+                      justify-content: flex-end;
+                      margin: 3px 0;
+                    }
+                    .total-label { margin-right: 10px; }
+                    .total-value { width: 90px; text-align: right; }
+                    .grand-total {
+                      border-top: 2px solid #000;
+                      padding-top: 5px;
+                      margin-top: 10px;
+                      font-weight: bold;
+                      font-size: 14px;
+                    }
+                    .payment-info {
+                      font-size: 11px;
+                      margin: 15px 0;
+                    }
+                    .footer {
+                      text-align: center;
+                      font-size: 10px;
+                      margin-top: 20px;
+                      border-top: 2px solid #000;
+                      border-bottom: 2px solid #000;
+                      padding: 10px 0;
+                    }
                   </style>
                 </head>
                 <body>
-                  <div class="header">
-                    <h1>FACTURE</h1>
-                    <p>${order.numero_facture || order.id}</p>
-                  </div>
-                  <div class="info">
-                    <p><strong>Date:</strong> ${new Date(order.date).toLocaleDateString('fr-FR')}</p>
-                    <p><strong>Vendeur:</strong> ${order.seller.name}</p>
-                    <p><strong>Adresse:</strong> ${order.shipping.address}</p>
-                  </div>
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Produit</th>
-                        <th>Quantité</th>
-                        <th>Prix Unitaire</th>
-                        <th>Total</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      ${order.items.map((item: any) => `
-                        <tr>
-                          <td>${item.name}</td>
-                          <td>${item.quantity}</td>
-                          <td>${(item.price / item.quantity).toLocaleString()} XOF</td>
-                          <td>${item.price.toLocaleString()} XOF</td>
-                        </tr>
-                      `).join('')}
-                    </tbody>
-                  </table>
-                  <div class="total">
-                    <p>Total: ${order.total.toLocaleString()} XOF</p>
+                  <div class="invoice-container">
+                    <!-- En-tête entreprise -->
+                    <div class="header-line">
+                      <div class="company-name">${companyInfo.nom}</div>
+                    </div>
+                    <div class="company-info">${companyInfo.adresse}</div>
+                    <div class="company-info">Tel: ${companyInfo.telephone}</div>
+                    <div class="company-info">Email: ${companyInfo.email}</div>
+                    <div class="header-line"></div>
+                    
+                    <!-- Titre FACTURE -->
+                    <div class="invoice-title">FACTURE</div>
+                    <div class="invoice-info">N° Facture: ${order.numero_facture || order.id || 'N/A'}</div>
+                    <div class="invoice-info">
+                      Date: ${new Date(order.date || invoiceData.date_creation || Date.now()).toLocaleDateString('fr-FR')} 
+                      ${new Date(order.date || invoiceData.date_creation || Date.now()).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                    <div class="invoice-info">Client: ${clientInfo.nom}</div>
+                    ${clientInfo.telephone ? `<div class="invoice-info">Tel: ${clientInfo.telephone}</div>` : ''}
+                    <div class="header-line"></div>
+                    
+                    <!-- Tableau des articles -->
+                    <div class="items-header">
+                      <span class="item-name">Designation</span>
+                      <span class="item-qty">Qte</span>
+                      <span class="item-price">P.U.</span>
+                      <span class="item-total">Montant</span>
+                    </div>
+                    <div class="dashed-line"></div>
+                    ${lignesToDisplay.map((ligne: any) => {
+                      const produitNom = ligne.produit?.nom || ligne.name || 'Produit';
+                      const quantite = ligne.quantite || ligne.quantity || 1;
+                      const prixUnitaire = ligne.prix_unitaire || ligne.prixUnitaire || (ligne.price && ligne.quantity ? (ligne.price / ligne.quantity) : 0);
+                      const montant = ligne.total_ttc || ligne.price || (prixUnitaire * quantite);
+                      const nomAffiche = produitNom.length > 20 ? produitNom.substring(0, 17) + '...' : produitNom;
+                      return `
+                        <div class="item-row">
+                          <span class="item-name">${nomAffiche}</span>
+                          <span class="item-qty">${quantite}</span>
+                          <span class="item-price">${prixUnitaire.toLocaleString('fr-FR')} F</span>
+                          <span class="item-total">${montant.toLocaleString('fr-FR')} F</span>
+                        </div>
+                      `;
+                    }).join('')}
+                    <div class="dashed-line"></div>
+                    
+                    <!-- Totaux -->
+                    <div class="totals">
+                      <div class="total-row">
+                        <span class="total-label">Sous-total:</span>
+                        <span class="total-value">${(dataToUse.sous_total || invoiceData.sous_total || order.total || 0).toLocaleString('fr-FR')} F</span>
+                      </div>
+                      ${((dataToUse.taxe_montant || invoiceData.taxe_montant || 0) > 0) ? `
+                        <div class="total-row">
+                          <span class="total-label">TVA (${dataToUse.tva_taux || invoiceData.tva_taux || 18}%):</span>
+                          <span class="total-value">${(dataToUse.taxe_montant || invoiceData.taxe_montant || 0).toLocaleString('fr-FR')} F</span>
+                        </div>
+                      ` : ''}
+                      ${((dataToUse.remise_montant || invoiceData.remise_montant || 0) > 0) ? `
+                        <div class="total-row">
+                          <span class="total-label">Remise:</span>
+                          <span class="total-value">- ${(dataToUse.remise_montant || invoiceData.remise_montant || 0).toLocaleString('fr-FR')} F</span>
+                        </div>
+                      ` : ''}
+                      <div class="total-row grand-total">
+                        <span class="total-label">TOTAL À PAYER:</span>
+                        <span class="total-value">${(dataToUse.total_ttc || invoiceData.total_ttc || order.total || 0).toLocaleString('fr-FR')} F</span>
+                      </div>
+                    </div>
+                    <div class="header-line"></div>
+                    
+                    <!-- Mode de paiement -->
+                    <div class="payment-info">
+                      <div>Mode de paiement: ${invoiceData.mode_paiement || order.payment?.method || 'Non spécifié'}</div>
+                    </div>
+                    <div class="header-line"></div>
+                    
+                    <!-- Message de remerciement -->
+                    <div class="footer">
+                      <div>Merci de votre confiance !</div>
+                      <div>Votre satisfaction est notre priorité</div>
+                    </div>
                   </div>
                 </body>
               </html>
             `);
-            printWindow.document.close();
-            printWindow.print();
-          }
-        }
-      } else {
-        alert('Impossible d\'imprimer la facture : ID de commande manquant');
-      }
+      printWindow.document.close();
+      setTimeout(() => {
+        printWindow.print();
+      }, 250);
     } catch (error: any) {
       console.error('Erreur lors de l\'impression:', error);
       alert('Erreur lors de l\'impression de la facture');
@@ -296,9 +654,42 @@ const OrdersPage: React.FC = () => {
           <Button 
             variant="secondary" 
             icon={<RefreshCw className="w-4 h-4" />}
-            onClick={loadOrders}
+            onClick={() => {
+              console.log('🔄 Rechargement manuel des commandes...');
+              loadOrders();
+            }}
           >
             Actualiser
+          </Button>
+          <Button 
+            variant="secondary" 
+            icon={<FileText className="w-4 h-4" />}
+            onClick={async () => {
+              console.log('🧪 TEST DIRECT DE L\'API...');
+              try {
+                const testResponse = await apiService.getClientOrders({ page_size: 100 });
+                console.log('🧪 Réponse du test:', testResponse);
+                console.log('🧪 Type:', typeof testResponse);
+                console.log('🧪 Est un tableau?', Array.isArray(testResponse));
+                if (Array.isArray(testResponse)) {
+                  console.log(`🧪 Nombre de commandes: ${testResponse.length}`);
+                  if (testResponse.length > 0) {
+                    console.log('🧪 Première commande:', testResponse[0]);
+                  }
+                } else if (testResponse && typeof testResponse === 'object') {
+                  console.log('🧪 Clés de l\'objet:', Object.keys(testResponse));
+                  if (testResponse.results) {
+                    console.log(`🧪 Nombre dans results: ${testResponse.results.length}`);
+                  }
+                }
+                alert(`Test terminé. Vérifiez la console pour les détails.\nCommandes trouvées: ${Array.isArray(testResponse) ? testResponse.length : testResponse?.results?.length || 0}`);
+              } catch (error) {
+                console.error('🧪 Erreur lors du test:', error);
+                alert('Erreur lors du test. Vérifiez la console.');
+              }
+            }}
+          >
+            Test API
           </Button>
         </div>
       </div>
@@ -355,11 +746,65 @@ const OrdersPage: React.FC = () => {
               <h3 className="text-lg font-semibold text-gray-600 dark:text-gray-300 mb-2">
                 Aucune commande trouvée
               </h3>
-              <p className="text-gray-500">
+              <p className="text-gray-500 mb-4">
                 {searchTerm || selectedTab !== 'all'
                   ? 'Aucune commande ne correspond à vos critères.'
                   : 'Vous n\'avez pas encore passé de commande.'}
               </p>
+              {!searchTerm && selectedTab === 'all' && (
+                <div className="mt-4 space-y-3">
+                  <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 text-left max-w-md mx-auto">
+                    <p className="text-sm text-blue-800 dark:text-blue-200 mb-2">
+                      <strong>💡 Pour déboguer :</strong>
+                    </p>
+                    <ul className="text-xs text-blue-700 dark:text-blue-300 space-y-1 list-disc list-inside">
+                      <li>Ouvrez la console du navigateur (F12)</li>
+                      <li>Cliquez sur "Test API" pour voir la réponse</li>
+                      <li>Vérifiez les logs du backend Django</li>
+                      <li>Assurez-vous que l'email correspond à celui utilisé lors de la commande</li>
+                    </ul>
+                  </div>
+                  <div className="flex justify-center space-x-3">
+                    <Button 
+                      variant="secondary" 
+                      icon={<RefreshCw className="w-4 h-4" />}
+                      onClick={loadOrders}
+                    >
+                      Actualiser
+                    </Button>
+                    <Button 
+                      variant="secondary" 
+                      icon={<FileText className="w-4 h-4" />}
+                      onClick={async () => {
+                        console.log('🧪 TEST DIRECT DE L\'API...');
+                        try {
+                          const testResponse = await apiService.getClientOrders({ page_size: 100 });
+                          console.log('🧪 Réponse du test:', testResponse);
+                          console.log('🧪 Type:', typeof testResponse);
+                          console.log('🧪 Est un tableau?', Array.isArray(testResponse));
+                          if (Array.isArray(testResponse)) {
+                            console.log(`🧪 Nombre de commandes: ${testResponse.length}`);
+                            if (testResponse.length > 0) {
+                              console.log('🧪 Première commande:', testResponse[0]);
+                            }
+                          } else if (testResponse && typeof testResponse === 'object') {
+                            console.log('🧪 Clés de l\'objet:', Object.keys(testResponse));
+                            if (testResponse.results) {
+                              console.log(`🧪 Nombre dans results: ${testResponse.results.length}`);
+                            }
+                          }
+                          alert(`Test terminé. Vérifiez la console pour les détails.\nCommandes trouvées: ${Array.isArray(testResponse) ? testResponse.length : testResponse?.results?.length || 0}`);
+                        } catch (error) {
+                          console.error('🧪 Erreur lors du test:', error);
+                          alert('Erreur lors du test. Vérifiez la console.');
+                        }
+                      }}
+                    >
+                      Test API
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div className="space-y-4">
@@ -420,6 +865,17 @@ const OrdersPage: React.FC = () => {
                             alt={item.name}
                             className="w-10 h-10 rounded-lg object-cover border-2 border-white dark:border-dark-800"
                             style={{ zIndex: 10 - i }}
+                            onError={(e) => {
+                              const target = e.currentTarget as HTMLImageElement;
+                              const currentSrc = target.src;
+                              // Essayer d'abord avec localhost:8000 si ce n'est pas déjà le cas
+                              if (!currentSrc.includes('localhost:8000') && !currentSrc.includes('unsplash') && !currentSrc.includes('pexels')) {
+                                const imagePath = currentSrc.replace(/^https?:\/\/[^/]+/, '');
+                                target.src = `http://localhost:8000${imagePath}`;
+                              } else {
+                                target.src = 'https://images.unsplash.com/photo-1557683316-973673baf926?q=80&w=200&auto=format&fit=crop';
+                              }
+                            }}
                           />
                         ))}
                         {order.items.length > 3 && (
@@ -557,7 +1013,14 @@ const OrdersPage: React.FC = () => {
                                 className="w-16 h-16 rounded-lg object-cover"
                                 onError={(e) => {
                                   const target = e.currentTarget as HTMLImageElement;
-                                  target.src = 'https://images.unsplash.com/photo-1557683316-973673baf926?q=80&w=200&auto=format&fit=crop';
+                                  const currentSrc = target.src;
+                                  // Essayer d'abord avec localhost:8000 si ce n'est pas déjà le cas
+                                  if (!currentSrc.includes('localhost:8000') && !currentSrc.includes('unsplash') && !currentSrc.includes('pexels')) {
+                                    const imagePath = currentSrc.replace(/^https?:\/\/[^/]+/, '');
+                                    target.src = `http://localhost:8000${imagePath}`;
+                                  } else {
+                                    target.src = 'https://images.unsplash.com/photo-1557683316-973673baf926?q=80&w=200&auto=format&fit=crop';
+                                  }
                                 }}
                               />
                               <div className="flex-1">

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Eye, EyeOff, Mail, Lock, ArrowRight, ChevronUp, Sparkles } from 'lucide-react';
+import { Eye, EyeOff, Mail, Lock, ArrowRight, ChevronUp, Sparkles, Home } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotifications } from '../../contexts/NotificationContext';
 
@@ -112,7 +112,12 @@ const LoginPage: React.FC = () => {
           title: 'Connexion réussie',
           message: 'Bienvenue sur la plateforme OCASS DIGITAL!',
         });
-        navigate(`/${formData.role}`);
+        // Rediriger les clients directement vers le catalogue
+        if (formData.role === 'client') {
+          navigate('/client/catalog');
+        } else {
+          navigate(`/${formData.role}`);
+        }
       } else {
         addNotification({
           type: 'error',
@@ -534,9 +539,10 @@ const LoginPage: React.FC = () => {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.5 }}
         onClick={() => navigate('/')}
-        className="fixed top-8 left-8 z-50 bg-white/10 backdrop-blur-sm text-white px-4 py-2 rounded-full border border-white/20 hover:bg-white/20 transition-all duration-300 flex items-center space-x-2"
+        className="fixed top-8 left-8 z-50 bg-white/10 backdrop-blur-sm text-white p-3 rounded-full border border-white/20 hover:bg-white/20 transition-all duration-300 hover:scale-110"
+        title="Retour à l'accueil"
       >
-        <span>← Retour</span>
+        <Home className="w-5 h-5" />
       </motion.button>
     </div>
   );

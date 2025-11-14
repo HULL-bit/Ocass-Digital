@@ -1041,17 +1041,105 @@ class ApiService {
   // Créer une vente
   async createSale(saleData: any) {
     try {
+      // S'assurer que lignes_data est toujours un tableau
+      const processedData = { ...saleData };
+      
+      // GARANTIR que lignes_data est toujours un tableau, même s'il est undefined, null, ou autre
+      if (!processedData.lignes_data) {
+        // Si lignes_data est undefined, null, ou falsy, initialiser un tableau vide
+        processedData.lignes_data = [];
+      } else if (!Array.isArray(processedData.lignes_data)) {
+        // Si lignes_data n'est pas un tableau, le convertir
+        console.warn('⚠️ lignes_data n\'est pas un tableau, conversion en cours...', processedData.lignes_data);
+        // Si c'est un objet, le convertir en tableau
+        if (typeof processedData.lignes_data === 'object' && processedData.lignes_data !== null) {
+          // Si c'est un objet avec des clés numériques ou des valeurs, utiliser Object.values
+          processedData.lignes_data = Object.values(processedData.lignes_data);
+        } else {
+          // Sinon, envelopper dans un tableau
+          processedData.lignes_data = [processedData.lignes_data];
+        }
+      }
+      
+      // Valider qu'il y a au moins une ligne
+      if (processedData.lignes_data.length === 0) {
+        throw new Error('Au moins une ligne de vente est requise');
+      }
+      
+      // Valider chaque ligne
+      processedData.lignes_data = processedData.lignes_data.map((ligne: any, index: number) => {
+        if (!ligne || typeof ligne !== 'object') {
+          throw new Error(`Ligne ${index + 1} invalide: doit être un objet`);
+        }
+        
+        // S'assurer que produit est présent
+        if (!ligne.produit) {
+          throw new Error(`Ligne ${index + 1}: le champ 'produit' est requis`);
+        }
+        
+        // S'assurer que les valeurs numériques sont bien des nombres
+        return {
+          produit: ligne.produit,
+          quantite: Number(ligne.quantite) || 1,
+          prix_unitaire: Number(ligne.prix_unitaire) || 0,
+          remise_pourcentage: Number(ligne.remise_pourcentage) || 0,
+          tva_taux: Number(ligne.tva_taux) || 18.00,
+          variante: ligne.variante || null,
+          notes: ligne.notes || ''
+        };
+      });
+      
+      // Validation finale avant envoi
+      if (!Array.isArray(processedData.lignes_data)) {
+        console.error('❌ ERREUR CRITIQUE: lignes_data n\'est toujours pas un tableau après traitement!', {
+          type: typeof processedData.lignes_data,
+          value: processedData.lignes_data,
+          isArray: Array.isArray(processedData.lignes_data)
+        });
+        throw new Error('Erreur de format: lignes_data doit être un tableau');
+      }
+      
+      // Créer une copie propre pour éviter tout problème de sérialisation
+      const finalData = {
+        ...processedData,
+        lignes_data: JSON.parse(JSON.stringify(processedData.lignes_data))
+      };
+      
+      console.log('📦 Données de vente traitées:', JSON.stringify(finalData, null, 2));
+      console.log('📦 Validation finale lignes_data:', {
+        isArray: Array.isArray(finalData.lignes_data),
+        length: finalData.lignes_data.length,
+        type: typeof finalData.lignes_data,
+        stringified: JSON.stringify(finalData.lignes_data).substring(0, 200)
+      });
+      
+      console.log('📤 Envoi de la requête POST vers /sales/ventes/...');
       const response = await this.request('/sales/ventes/', {
         method: 'POST',
-        body: JSON.stringify(saleData),
+        body: JSON.stringify(finalData),
         headers: {
           'Content-Type': 'application/json',
         },
       });
       
+      console.log('✅ Réponse reçue du serveur:', response);
       return response;
     } catch (error: any) {
-      console.error('Erreur lors de la création de vente:', error);
+      console.error('❌ ========== ERREUR DANS createSale ==========');
+      console.error('❌ Erreur lors de la création de vente:', error);
+      console.error('❌ Type d\'erreur:', typeof error);
+      console.error('❌ Message:', error?.message);
+      console.error('❌ Response:', error?.response);
+      console.error('❌ Response Status:', error?.response?.status);
+      console.error('❌ Response Data:', error?.response?.data);
+      console.error('❌ Response Headers:', error?.response?.headers);
+      
+      // Améliorer le message d'erreur
+      if (error?.response?.data) {
+        const errorData = error.response.data;
+        console.error('❌ Détails de l\'erreur API:', JSON.stringify(errorData, null, 2));
+      }
+      
       throw error;
     }
   }
@@ -1189,28 +1277,100 @@ class ApiService {
     try {
       const queryParams = new URLSearchParams();
       if (params?.status && params.status !== 'all') {
-        queryParams.append('statut', params.status);
+        // Mapper les statuts frontend vers les statuts backend
+        const statusMap: Record<string, string> = {
+          'processing': 'en_attente',
+          'shipped': 'expediee',
+          'delivered': 'livree',
+          'cancelled': 'annulee'
+        };
+        const backendStatus = statusMap[params.status] || params.status;
+        queryParams.append('statut', backendStatus);
       }
       if (params?.page_size) {
         queryParams.append('page_size', params.page_size.toString());
       }
       queryParams.append('ordering', '-date_creation');
       
-      const endpoint = `/sales/ventes/${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
+      // Construire l'endpoint correctement (sans / avant le ?)
+      const queryString = queryParams.toString();
+      const endpoint = `/sales/ventes${queryString ? '?' + queryString : ''}`;
+      console.log('🔍 Appel API getClientOrders:', endpoint);
+      console.log('🔍 Paramètres de requête:', Object.fromEntries(queryParams));
+      
       const response = await this.request(endpoint);
+      console.log('📦 Réponse brute getClientOrders:', response);
+      console.log('📦 Type de réponse:', typeof response);
+      console.log('📦 Est un tableau?', Array.isArray(response));
       
       // Gérer différents formats de réponse
+      let orders = [];
       if (Array.isArray(response)) {
-        return response;
-      } else if (response.results) {
-        return response.results;
-      } else if (response.data) {
-        return response.data;
+        orders = response;
+        console.log('✅ Réponse est un tableau direct');
+      } else if (response?.results && Array.isArray(response.results)) {
+        orders = response.results;
+        console.log('✅ Réponse contient results:', response.results.length);
+        if (response.pagination) {
+          console.log('📊 Pagination:', response.pagination);
+        }
+      } else if (response?.data && Array.isArray(response.data)) {
+        orders = response.data;
+        console.log('✅ Réponse contient data:', response.data.length);
+      } else if (response && typeof response === 'object') {
+        // Essayer de trouver les résultats dans différentes structures
+        const possibleKeys = ['results', 'data', 'items', 'orders', 'ventes'];
+        for (const key of possibleKeys) {
+          if (response[key] && Array.isArray(response[key])) {
+            orders = response[key];
+            console.log(`✅ Réponse contient ${key}:`, response[key].length);
+            break;
+          }
+        }
+        
+        if (orders.length === 0) {
+          console.warn('⚠️ Format de réponse inattendu:', {
+            type: typeof response,
+            isArray: Array.isArray(response),
+            hasResults: !!response?.results,
+            hasData: !!response?.data,
+            hasPagination: !!response?.pagination,
+            keys: Object.keys(response)
+          });
+          // Afficher toute la structure pour débogage
+          console.warn('⚠️ Structure complète de la réponse:', JSON.stringify(response, null, 2));
+        }
       }
       
-      return [];
+      console.log(`📦 ${orders.length} commande(s) récupérée(s) pour le client`);
+      
+      // Log détaillé pour le débogage
+      if (orders.length > 0) {
+        console.log('📦 Détails des commandes:', orders.map((o: any) => ({
+          id: o.id,
+          numero_facture: o.numero_facture,
+          client_id: o.client,
+          client_email: o.client_email || o.client?.email,
+          statut: o.statut,
+          date_creation: o.date_creation,
+          entrepreneur: o.entrepreneur
+        })));
+      } else {
+        console.warn('⚠️ Aucune commande trouvée pour le client');
+        console.warn('⚠️ Réponse complète:', JSON.stringify(response, null, 2));
+        console.warn('⚠️ Type de réponse:', typeof response);
+        if (response && typeof response === 'object') {
+          console.warn('⚠️ Clés de la réponse:', Object.keys(response));
+          if (response.count !== undefined) {
+            console.warn('⚠️ Nombre total de commandes (count):', response.count);
+          }
+        }
+      }
+      
+      return orders;
     } catch (error: any) {
       console.error('Erreur lors de la récupération des commandes:', error);
+      // Retourner un tableau vide au lieu de lancer une erreur
       return [];
     }
   }

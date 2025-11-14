@@ -14,6 +14,9 @@ from drf_spectacular.views import (
 
 # API v1 URLs
 api_v1_patterns = [
+    # Core utilities (health check, stats, etc.)
+    path('core/', include('apps.core.urls')),
+    
     # Authentication & Users
     path('auth/', include('apps.authentication.urls')),
     path('users/', include('apps.users.urls')),

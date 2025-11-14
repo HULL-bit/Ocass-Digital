@@ -26,6 +26,7 @@ import {
 import { useAuth } from '../../contexts/AuthContext';
 import Button from '../../components/ui/Button';
 import apiService from '../../services/api/realApi';
+import dashboardApiService from '../../services/api/dashboardApi';
 import { getAvatarWithFallback } from '../../utils/avatarUtils';
 
 const ProfilePage: React.FC = () => {
@@ -43,31 +44,30 @@ const ProfilePage: React.FC = () => {
   useEffect(() => {
     const loadClientMetrics = async () => {
       try {
-        // Charger les données réelles depuis l'API
-        const [orders, sales] = await Promise.all([
-          apiService.getOrders(),
-          apiService.getSales()
-        ]);
+        // Charger les métriques depuis l'API dashboard client
+        const dashboardMetrics = await dashboardApiService.getDashboardMetrics('client', 'month');
         
-        const totalOrders = orders.results?.length || 0;
-        const totalSpent = sales.results?.reduce((sum: number, sale: any) => sum + (parseFloat(sale.total_ttc) || 0), 0) || 0;
+        // Charger aussi les commandes pour avoir les données complètes
+        const sales = await apiService.getSales();
+        const totalOrders = sales.results?.length || dashboardMetrics.totalOrders || 0;
+        const totalSpent = sales.results?.reduce((sum: number, sale: any) => sum + (parseFloat(sale.total_ttc) || 0), 0) || dashboardMetrics.totalSpent || 0;
         const loyaltyPoints = Math.floor(totalSpent / 1000); // 1 point par 1000 FCFA
         const favorites = JSON.parse(localStorage.getItem('favoriteProducts') || '[]').length;
         
         setClientMetrics({
-          totalOrders,
-          totalSpent,
-          loyaltyPoints,
-          favorites
+          totalOrders: totalOrders,
+          totalSpent: totalSpent,
+          loyaltyPoints: loyaltyPoints || dashboardMetrics.loyaltyPoints || 0,
+          favorites: favorites || dashboardMetrics.favorites || 0
         });
       } catch (error) {
         console.error('Erreur lors du chargement des métriques client:', error);
         // Valeurs par défaut en cas d'erreur
         setClientMetrics({
-          totalOrders: 23,
-          totalSpent: 450000,
-          loyaltyPoints: 1250,
-          favorites: 7
+          totalOrders: 0,
+          totalSpent: 0,
+          loyaltyPoints: 0,
+          favorites: 0
         });
       }
     };

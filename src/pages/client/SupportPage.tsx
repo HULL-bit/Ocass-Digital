@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Headphones, 
@@ -39,6 +39,8 @@ const SupportPage: React.FC = () => {
   const [isAIEnabled, setIsAIEnabled] = useState(true);
   const [isLoadingAI, setIsLoadingAI] = useState(false);
   const [showAIConfigMessage, setShowAIConfigMessage] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
   const [chatMessages, setChatMessages] = useState([
     {
       id: '1',
@@ -86,6 +88,13 @@ const SupportPage: React.FC = () => {
       ],
     },
   ]);
+
+  // Scroll automatique vers le bas quand de nouveaux messages arrivent
+  useEffect(() => {
+    if (messagesEndRef.current && chatContainerRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [chatMessages, isLoadingAI]);
 
   const myTickets = [
     {
@@ -181,8 +190,8 @@ const SupportPage: React.FC = () => {
   ];
 
   const generateBotResponse = async (userMessage: string) => {
+    // Si l'IA est désactivée, utiliser directement le fallback
     if (!isAIEnabled) {
-      // Mode de réponses prédéfinies (fallback)
       return generateFallbackResponse(userMessage);
     }
 
@@ -209,7 +218,7 @@ const SupportPage: React.FC = () => {
       console.error('Erreur avec l\'IA OpenAI:', error);
       
       // Désactiver automatiquement l'IA si la clé API n'est pas configurée
-      if (error instanceof Error && error.message.includes('Clé API OpenAI non configurée')) {
+      if (error instanceof Error && (error.message.includes('Clé API OpenAI non configurée') || error.message.includes('API Key not configured'))) {
         setIsAIEnabled(false);
         setShowAIConfigMessage(true);
         console.log('IA désactivée automatiquement - Clé API non configurée');
@@ -401,48 +410,58 @@ const SupportPage: React.FC = () => {
   };
 
   const sendMessage = async () => {
-    if (newMessage.trim()) {
-      const userMessage = {
-        id: Date.now().toString(),
-        sender: 'user',
-        message: newMessage,
+    const messageText = newMessage.trim();
+    if (!messageText) {
+      return; // Ne rien faire si le message est vide
+    }
+
+    // Créer le message utilisateur
+    const userMessage = {
+      id: Date.now().toString(),
+      sender: 'user',
+      message: messageText,
+      timestamp: new Date().toISOString(),
+      type: 'text',
+    };
+    
+    // Ajouter le message utilisateur immédiatement
+    setChatMessages(prev => [...prev, userMessage]);
+    const currentMessage = messageText;
+    setNewMessage(''); // Vider le champ de saisie
+    
+    // Générer la réponse du bot (IA ou fallback)
+    try {
+      setIsLoadingAI(true);
+      const botResponseData = await generateBotResponse(currentMessage);
+      
+      const botResponse = {
+        id: (Date.now() + 1).toString(),
+        sender: 'bot',
+        message: botResponseData.message,
         timestamp: new Date().toISOString(),
         type: 'text',
+        actions: botResponseData.actions || []
       };
       
-      setChatMessages(prev => [...prev, userMessage]);
-      const currentMessage = newMessage;
-      setNewMessage('');
+      setChatMessages(prev => [...prev, botResponse]);
+    } catch (error) {
+      console.error('Erreur lors de la génération de la réponse:', error);
       
-      // Generate intelligent bot response (IA ou fallback)
-      try {
-        const botResponseData = await generateBotResponse(currentMessage);
-        const botResponse = {
-          id: (Date.now() + 1).toString(),
-          sender: 'bot',
-          message: botResponseData.message,
-          timestamp: new Date().toISOString(),
-          type: 'text',
-          actions: botResponseData.actions
-        };
-        setChatMessages(prev => [...prev, botResponse]);
-      } catch (error) {
-        console.error('Erreur lors de la génération de la réponse:', error);
-        
-        // Réponse d'erreur de fallback
-        const errorResponse = {
-          id: (Date.now() + 1).toString(),
-          sender: 'bot',
-          message: 'Désolé, je rencontre un problème technique. Un agent va vous contacter dans les plus brefs délais.',
-          timestamp: new Date().toISOString(),
-          type: 'text',
-          actions: [
-            { label: 'Parler à un agent', action: 'speak_agent' },
-            { label: 'Créer un ticket', action: 'create_ticket' }
-          ]
-        };
-        setChatMessages(prev => [...prev, errorResponse]);
-      }
+      // Réponse d'erreur de fallback
+      const errorResponse = {
+        id: (Date.now() + 1).toString(),
+        sender: 'bot',
+        message: 'Désolé, je rencontre un problème technique. Un agent va vous contacter dans les plus brefs délais.',
+        timestamp: new Date().toISOString(),
+        type: 'text',
+        actions: [
+          { label: 'Parler à un agent', action: 'speak_agent' },
+          { label: 'Créer un ticket', action: 'create_ticket' }
+        ]
+      };
+      setChatMessages(prev => [...prev, errorResponse]);
+    } finally {
+      setIsLoadingAI(false);
     }
   };
 
@@ -689,7 +708,10 @@ const SupportPage: React.FC = () => {
                 )}
 
                 {/* Chat Messages */}
-                <div className="h-96 overflow-y-auto bg-gray-50 dark:bg-gray-700 rounded-xl p-4 space-y-4">
+                <div 
+                  ref={chatContainerRef}
+                  className="h-96 overflow-y-auto bg-gray-50 dark:bg-gray-700 rounded-xl p-4 space-y-4"
+                >
                   {chatMessages.map((message) => (
                     <motion.div
                       key={message.id}
@@ -755,6 +777,9 @@ const SupportPage: React.FC = () => {
                       </div>
                     </motion.div>
                   )}
+                  
+                  {/* Référence pour le scroll automatique */}
+                  <div ref={messagesEndRef} />
                 </div>
 
                 {/* Message Input */}
@@ -766,12 +791,13 @@ const SupportPage: React.FC = () => {
                       placeholder="Tapez votre message..."
                       className="input-premium resize-none"
                       rows={2}
-                      onKeyPress={(e) => {
+                      onKeyDown={(e) => {
                         if (e.key === 'Enter' && !e.shiftKey) {
                           e.preventDefault();
                           sendMessage();
                         }
                       }}
+                      disabled={isLoadingAI}
                     />
                   </div>
                   <div className="flex flex-col space-y-2">
@@ -783,8 +809,9 @@ const SupportPage: React.FC = () => {
                       size="sm" 
                       icon={<Send className="w-4 h-4" />}
                       onClick={sendMessage}
+                      disabled={isLoadingAI || !newMessage.trim()}
                     >
-                      Envoyer
+                      {isLoadingAI ? 'Envoi...' : 'Envoyer'}
                     </Button>
                   </div>
                 </div>

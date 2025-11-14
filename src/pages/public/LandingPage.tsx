@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowRight, Building2, ShoppingBag, ShieldCheck, Sparkles } from 'lucide-react';
+import { ArrowRight, Building2, ShoppingBag, ShieldCheck, Sparkles, LogIn, UserPlus } from 'lucide-react';
 import ProfileCard from '../../components/cards/ProfileCard';
 import CardSwap, { Card } from '../../components/cards/CardSwap';
 import { mockData } from '../../services/api/mockApi';
@@ -111,9 +111,21 @@ const LandingPage: React.FC = () => {
               <img src="/logo.svg" alt="Logo" className="h-12 w-12" />
               <span className="text-xl font-bold text-white">OCASS DIGITAL</span>
             </div>
-            <nav className="hidden md:flex items-center gap-8 text-white/85">
-              <a href="/auth/login" className="text-lg font-medium hover:text-white transition">Connexion</a>
-              <a href="/auth/register" className="text-lg font-medium hover:text-white transition">Inscription</a>
+            <nav className="flex items-center gap-3 md:gap-4 text-white/85">
+              <a 
+                href="/auth/login" 
+                className="p-2 rounded-full hover:bg-white/10 transition-all hover:scale-110 group"
+                title="Connexion"
+              >
+                <LogIn className="w-5 h-5 md:w-6 md:h-6 group-hover:text-white transition" />
+              </a>
+              <a 
+                href="/auth/register" 
+                className="p-2 rounded-full hover:bg-white/10 transition-all hover:scale-110 group"
+                title="Inscription"
+              >
+                <UserPlus className="w-5 h-5 md:w-6 md:h-6 group-hover:text-white transition" />
+              </a>
             </nav>
           </div>
         </div>
@@ -405,7 +417,12 @@ const LandingPage: React.FC = () => {
           <div>
             <div className="font-semibold mb-3">Support</div>
             <ul className="space-y-2 text-sm">
-              <li><a href="/auth/login" className="hover:underline">Connexion</a></li>
+              <li>
+                <a href="/auth/login" className="hover:underline inline-flex items-center gap-2">
+                  <LogIn className="w-4 h-4" />
+                  Connexion
+                </a>
+              </li>
               <li><a href="/auth/register" className="hover:underline">Créer un compte</a></li>
               <li><a href="#" className="hover:underline">Aide & FAQ</a></li>
             </ul>

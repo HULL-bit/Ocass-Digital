@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSearchParams } from 'react-router-dom';
 import { 
@@ -28,7 +28,8 @@ import clientApiService from '../../services/api/clientApi';
 import useDataSync from '../../hooks/useDataSync';
 import useCart from '../../hooks/useCart';
 import { getCompanyLogo } from '../../utils/companyLogos';
-import { getProductImage, getProductImages } from '../../utils/productImages';
+import { getProductImageFromPublic } from '../../utils/publicProductImages';
+// Images par défaut supprimées - utilisation uniquement des images réelles de la base de données
 
 const CatalogPage: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -74,6 +75,10 @@ const CatalogPage: React.FC = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [totalProducts, setTotalProducts] = useState(0);
   const [showFilters, setShowFilters] = useState(false);
+  
+  // Flag pour éviter les appels multiples simultanés
+  const [companiesLoading, setCompaniesLoading] = useState(false);
+  const companiesLoadingRef = useRef(false);
 
 
   const updateCategoryCounts = useCallback((productsList: any[]) => {
@@ -122,18 +127,48 @@ const CatalogPage: React.FC = () => {
     }
   }, [products, updateCategoryCounts]);
 
-  // Synchroniser les données avec le service centralisé
+  // Synchroniser les données avec le service centralisé - UNIFIÉ
+  // Ne pas écraser les produits déjà chargés si les données synchronisées sont identiques
   useEffect(() => {
-    if (safeSyncedProducts.length > 0) {
-      setProducts(safeSyncedProducts);
+    if (safeSyncedProducts.length > 0 && safeSyncedProducts.length !== products.length) {
+      console.log('🔄 Synchronisation des produits depuis useDataSync:', safeSyncedProducts.length);
+      // Transformer les produits synchronisés pour correspondre au format attendu
+      const transformed = safeSyncedProducts.map((product: any) => {
+        // Vérifier si le produit existe déjà dans products pour éviter les doublons
+        const existing = products.find((p: any) => p.id === product.id);
+        if (existing) {
+          return existing; // Garder la version existante qui a déjà été transformée
+        }
+        // Transformer le produit synchronisé
+        return {
+          ...product,
+          name: product.nom || product.name,
+          price: parseFloat(product.prix_vente || product.price || 0),
+          originalPrice: parseFloat(product.prix_achat || product.originalPrice || 0),
+          stock: parseInt(product.stock || product.stock_actuel || product.stock_disponible || 0),
+          inStock: (parseInt(product.stock || product.stock_actuel || product.stock_disponible || 0) > 0),
+          category: product.categorie?.nom || product.categorie_nom || product.category || 'Autre',
+          categoryId: product.categorie?.id || product.categorie,
+          company: product.entreprise_nom || (typeof product.entreprise === 'object' ? product.entreprise?.nom : null) || 'Entreprise inconnue',
+          companyId: typeof product.entreprise === 'object' ? product.entreprise?.id : product.entreprise
+        };
+      });
+      setProducts(transformed);
     }
-  }, [safeSyncedProducts]);
+  }, [safeSyncedProducts]); // Ne pas inclure products dans les dépendances pour éviter les boucles
 
   useEffect(() => {
-    if (safeSyncedCompanies.length > 0) {
-      setCompanies(safeSyncedCompanies);
+    if (safeSyncedCompanies.length > 0 && safeSyncedCompanies.length !== companies.length) {
+      console.log('🔄 Synchronisation des entreprises depuis useDataSync:', safeSyncedCompanies.length);
+      const transformed = safeSyncedCompanies.map((company: any) => ({
+        id: company.id,
+        name: company.nom || company.name,
+        logo: company.logo || getCompanyLogo(company.id),
+        count: 0
+      }));
+      setCompanies(transformed);
     }
-  }, [safeSyncedCompanies]);
+  }, [safeSyncedCompanies]); // Ne pas inclure companies dans les dépendances
 
   // Charger les données réelles du client
   useEffect(() => {
@@ -149,13 +184,28 @@ const CatalogPage: React.FC = () => {
     loadClientData();
   }, []);
 
-  // Charger les produits depuis l'API
-  useEffect(() => {
-    loadProducts();
-    loadCategories();
-    loadFavorites();
-  }, [searchParams]);
+  // Note: Le chargement initial est géré par le useEffect ci-dessous pour éviter les doubles chargements
 
+  // Debounce helper
+  function useDebounce<T>(value: T, delay: number): T {
+    const [debouncedValue, setDebouncedValue] = useState<T>(value);
+    
+    useEffect(() => {
+      const handler = setTimeout(() => {
+        setDebouncedValue(value);
+      }, delay);
+      
+      return () => {
+        clearTimeout(handler);
+      };
+    }, [value, delay]);
+    
+    return debouncedValue;
+  }
+  
+  // Debounce la recherche
+  const debouncedSearchTerm = useDebounce(searchTerm, 300);
+  
   // Filtrer les produits avec useMemo pour éviter les re-renders inutiles
   const filteredProductsMemo = useMemo(() => {
     if (!products || products.length === 0) {
@@ -164,9 +214,9 @@ const CatalogPage: React.FC = () => {
 
     let filtered = [...products];
     
-    // Filtrage par recherche
-    if (searchTerm) {
-      const searchLower = searchTerm.toLowerCase();
+    // Filtrage par recherche avec debounce
+    if (debouncedSearchTerm) {
+      const searchLower = debouncedSearchTerm.toLowerCase();
       filtered = filtered.filter(product => 
         product.name?.toLowerCase().includes(searchLower) ||
         product.description?.toLowerCase().includes(searchLower) ||
@@ -233,7 +283,7 @@ const CatalogPage: React.FC = () => {
     }
     
     return filtered;
-  }, [products, searchTerm, selectedCategory, priceRange, sortBy, selectedCompany, categories]);
+  }, [products, debouncedSearchTerm, selectedCategory, priceRange, sortBy, selectedCompany, categories]);
 
   // Synchroniser les produits filtrés avec le state
   useEffect(() => {
@@ -243,15 +293,61 @@ const CatalogPage: React.FC = () => {
     console.log('Produits filtrés:', filteredProductsMemo.length, 'sur', products.length, 'total');
   }, [filteredProductsMemo, products.length]);
 
-  // Charger les produits au montage et quand nécessaire
+  // Charger les produits au montage - UNE SEULE FOIS
   useEffect(() => {
-    loadProducts();
-  }, []);
+    // Charger les données de manière optimisée
+    // loadProducts charge maintenant les entreprises directement si nécessaire
+    const initializeData = async () => {
+      try {
+        // Charger les catégories en premier (ne dépend de rien)
+        await loadCategories();
+        
+        // Charger les entreprises d'abord, puis les produits
+        // Cela évite les appels multiples et garantit que les entreprises sont disponibles
+        const companiesData = await loadCompanies();
+        console.log('✅ Entreprises chargées avant les produits:', companiesData.length);
+        
+        // Maintenant charger les produits (qui utilisera les entreprises déjà chargées)
+        await loadProducts();
+        
+        // Charger les favoris (localStorage, pas d'API)
+        loadFavorites();
+        
+        console.log('✅ Initialisation des données terminée');
+      } catch (error) {
+        console.error('❌ Erreur lors de l\'initialisation des données:', error);
+        setLoading(false);
+      }
+    };
+    
+    // Ne charger que si les produits ne sont pas déjà chargés
+    if (products.length === 0) {
+      console.log('🚀 Démarrage de l\'initialisation des données...');
+      initializeData();
+    } else {
+      console.log('ℹ️ Données déjà chargées, pas de rechargement');
+    }
+  }, []); // Dépendances vides pour ne charger qu'une fois
 
   const loadProducts = async () => {
     try {
       setLoading(true);
       console.log('Chargement de tous les produits...');
+      
+      // Récupérer les entreprises - utiliser loadCompanies qui gère les appels multiples
+      // Cela garantit qu'une seule requête API est faite même si plusieurs composants appellent
+      let companiesData: any[] = [];
+      
+      if (companies.length > 1) {
+        // Utiliser les entreprises du state si déjà chargées
+        companiesData = companies.filter((c: any) => c.id !== 'all');
+        console.log('✅ Utilisation des entreprises du state:', companiesData.length);
+      } else {
+        // Charger les entreprises via loadCompanies (qui évite les appels multiples)
+        console.log('📦 Chargement des entreprises pour le mapping...');
+        companiesData = await loadCompanies();
+        console.log('✅ Entreprises chargées pour le mapping:', companiesData.length);
+      }
       
       // Récupérer TOUS les produits sans pagination
       let allProductsData = [];
@@ -263,8 +359,8 @@ const CatalogPage: React.FC = () => {
         
         if (Array.isArray(allProducts)) {
           allProductsData = allProducts;
-        } else if (allProducts && Array.isArray(allProducts.results)) {
-          allProductsData = allProducts.results;
+        } else if (allProducts && typeof allProducts === 'object' && 'results' in allProducts && Array.isArray((allProducts as any).results)) {
+          allProductsData = (allProducts as any).results;
         }
       } catch (error) {
         console.warn('Erreur avec getAllProducts, essai avec getProducts paginé:', error);
@@ -292,49 +388,151 @@ const CatalogPage: React.FC = () => {
       console.log('Total produits récupérés:', allProductsData.length);
       
       // Filtrer uniquement les produits visibles dans le catalogue et actifs
+      // ET qui ont au moins une image réelle
       const visibleProducts = allProductsData.filter((product: any) => {
+        // Vérifier que le produit a les champs requis
+        if (!product.id) {
+          console.warn('⚠️ Produit sans ID ignoré:', product);
+          return false;
+        }
+        // Filtrer les produits visibles et actifs
         const isVisible = product.visible_catalogue !== false && product.statut === 'actif';
-        return isVisible;
+        if (!isVisible) {
+          return false;
+        }
+        
+        // VÉRIFIER QU'IL Y A AU MOINS UNE IMAGE RÉELLE
+        const hasRealImage = 
+          (product.images && Array.isArray(product.images) && product.images.length > 0) ||
+          (product.image && typeof product.image === 'string' && product.image.trim() !== '');
+        
+        if (!hasRealImage) {
+          console.warn(`⚠️ Produit "${product.nom}" (ID: ${product.id}) ignoré: pas d'image réelle`);
+          return false;
+        }
+        
+        return true;
       });
       
       console.log(`📊 Produits visibles: ${visibleProducts.length} sur ${allProductsData.length} total`);
       
+      // Vérifier les doublons par ID
+      const uniqueProducts = visibleProducts.reduce((acc: any[], product: any) => {
+        const exists = acc.find((p: any) => p.id === product.id);
+        if (!exists) {
+          acc.push(product);
+        } else {
+          console.warn(`⚠️ Produit dupliqué détecté et ignoré (ID: ${product.id}):`, product.nom);
+        }
+        return acc;
+      }, []);
+      
+      console.log(`✅ Produits uniques après déduplication: ${uniqueProducts.length}`);
+      
+      // Créer un mapping des entreprises avec leurs logos pour référence rapide
+      // Utiliser companiesData au lieu de companies pour garantir la disponibilité
+      const companyMap = new Map();
+      companiesData.forEach((company: any) => {
+        if (company.id && company.id !== 'all') {
+          companyMap.set(company.id, {
+            name: company.name || company.nom,
+            logo: company.logo || getCompanyLogo(company.id) || null
+          });
+        }
+      });
+      
+      console.log(`🏢 Mapping des entreprises créé: ${companyMap.size} entreprises`);
+      
       // Transformer les données pour correspondre au format attendu
-      let transformedProducts = visibleProducts.map((product: any) => {
+      // FILTRER les produits qui n'ont PAS d'images réelles
+      let transformedProducts = uniqueProducts
+        .filter((product: any) => {
+          // Vérifier si le produit a au moins une image réelle
+          const hasRealImage = 
+            (product.images && Array.isArray(product.images) && product.images.length > 0) ||
+            (product.image && typeof product.image === 'string' && product.image.trim() !== '');
+          
+          if (!hasRealImage) {
+            console.warn(`⚠️ Produit "${product.nom}" (ID: ${product.id}) ignoré: pas d'image réelle`);
+            return false;
+          }
+          return true;
+        })
+        .map((product: any) => {
 
-        const categoryName = product.categorie?.nom || 'Autre';
-        const productImages = getProductImages(categoryName, product.nom);
+        const categoryName = product.categorie?.nom || product.categorie_nom || 'Autre';
+        
+        // Récupérer l'ID de l'entreprise (peut être un objet ou un ID)
+        const entrepriseId = typeof product.entreprise === 'object' && product.entreprise !== null 
+          ? product.entreprise.id 
+          : product.entreprise;
+        
+        // Récupérer le nom de l'entreprise (priorité à entreprise_nom du serializer)
+        const entrepriseNom = product.entreprise_nom || 
+          (typeof product.entreprise === 'object' && product.entreprise !== null ? product.entreprise.nom : null) ||
+          'Entreprise inconnue';
+        
+        // Récupérer le logo de l'entreprise depuis le mapping ou utiliser getCompanyLogo
+        const entrepriseInfo = companyMap.get(entrepriseId);
+        const entrepriseLogo = entrepriseInfo?.logo || 
+          (typeof product.entreprise === 'object' && product.entreprise !== null ? product.entreprise.logo : null) ||
+          getCompanyLogo(entrepriseId || product.id);
         
         return {
           ...product,
           id: product.id,
           name: product.nom,
           description: product.description_courte || product.description_longue || 'Aucune description',
-          price: parseFloat(product.prix_vente) || 0,
-          originalPrice: parseFloat(product.prix_achat) || 0,
-          discount: product.prix_achat && product.prix_vente ? 
-            Math.round(((parseFloat(product.prix_achat) - parseFloat(product.prix_vente)) / parseFloat(product.prix_achat)) * 100) : 0,
+          price: parseFloat(product.prix_vente || product.price || 0),
+          originalPrice: parseFloat(product.prix_achat || product.originalPrice || 0),
+          discount: product.prix_promotion && product.prix_vente ? 
+            Math.round(((parseFloat(product.prix_vente) - parseFloat(product.prix_promotion)) / parseFloat(product.prix_vente)) * 100) : 0,
           rating: 4.0 + Math.random() * 1.0, // Simulation entre 4.0 et 5.0
           reviews: Math.floor(Math.random() * 300) + 20, // Simulation entre 20 et 320
-          image: (() => {
-            if (product.images && product.images.length > 0) {
-              const firstImage = product.images[0];
-              if (firstImage.image_url) return firstImage.image_url;
-              if (firstImage.image) {
-                return firstImage.image.startsWith('http') ? firstImage.image : `http://localhost:8000${firstImage.image}`;
-              }
+          image: getProductImageFromPublic({
+            nom: product.nom,
+            name: product.name,
+            categorie: product.categorie,
+            categorie_nom: categoryName,
+            images: product.images,
+            image: product.image,
+            id: product.id
+          }),
+          images: (() => {
+            // Utiliser les images réelles du produit si disponibles
+            if (product.images && Array.isArray(product.images) && product.images.length > 0) {
+              return product.images.map((img: any) => {
+                if (img.image_url && typeof img.image_url === 'string' && img.image_url.trim() !== '') {
+                  return img.image_url;
+                }
+                if (img.image && typeof img.image === 'string' && img.image.trim() !== '') {
+                  if (img.image.startsWith('http')) {
+                    return img.image;
+                  } else {
+                    // Construire l'URL complète avec /media/ si nécessaire
+                    let imagePath = img.image;
+                    if (!imagePath.startsWith('/')) {
+                      imagePath = `/${imagePath}`;
+                    }
+                    // S'assurer que le chemin commence par /media/
+                    if (!imagePath.startsWith('/media/')) {
+                      imagePath = imagePath.startsWith('/') ? `/media${imagePath}` : `/media/${imagePath}`;
+                    }
+                    return `http://localhost:8000${imagePath}`;
+                  }
+                }
+                return null;
+              }).filter((url: string | null) => url !== null);
             }
-            return getProductImage(categoryName, product.nom, product.id);
+            // PAS D'IMAGES PAR DÉFAUT - Retourner un tableau vide si pas d'images réelles
+            return [];
           })(),
-          images: product.images?.length > 0 ? product.images.map((img: any) => 
-            img.image_url || (img.image?.startsWith('http') ? img.image : `http://localhost:8000${img.image}`) || img.image
-          ) : productImages,
           category: categoryName,
-          categoryId: product.categorie?.id,
+          categoryId: product.categorie?.id || product.categorie,
           brand: product.marque_nom || product.marque || 'Marque inconnue',
           brandId: product.marque,
-          stock: parseInt(product.stock) || parseInt(product.stock_actuel) || parseInt(product.stock_disponible) || 0,
-          inStock: (parseInt(product.stock) || parseInt(product.stock_actuel) || parseInt(product.stock_disponible) || 0) > 0,
+          stock: parseInt(product.stock_actuel || product.stock || product.stock_disponible || 0),
+          inStock: (parseInt(product.stock_actuel || product.stock || product.stock_disponible || 0)) > 0,
           colors: product.couleurs_disponibles || ['Noir', 'Blanc'],
           sizes: product.tailles_disponibles || ['S', 'M', 'L'],
           weight: product.poids || 0,
@@ -345,12 +543,12 @@ const CatalogPage: React.FC = () => {
             'Livraison gratuite'
           ],
           tags: product.tags || ['nouveau', 'populaire'],
-          company: product.entreprise?.nom || product.entreprise_nom || 'Entreprise inconnue',
-          companyId: typeof product.entreprise === 'object' ? product.entreprise?.id : product.entreprise,
-          companyLogo: product.entreprise?.logo || getCompanyLogo(product.entreprise?.id || product.id),
+          company: entrepriseNom,
+          companyId: entrepriseId,
+          companyLogo: entrepriseLogo,
           seller: {
-            name: product.entreprise?.nom || 'Entreprise inconnue',
-            logo: product.entreprise?.logo || getCompanyLogo(product.entreprise?.id || product.id),
+            name: entrepriseNom,
+            logo: entrepriseLogo,
             rating: 4.5 + Math.random() * 0.5, // Simulation entre 4.5 et 5.0
             verified: true,
             location: 'Dakar, Sénégal'
@@ -371,500 +569,11 @@ const CatalogPage: React.FC = () => {
       
       console.log('✅ Tous les produits transformés:', transformedProducts.length);
       
-      // Ajouter les produits mockés de la page d'accueil pour qu'ils apparaissent dans le catalogue
-      const mockProducts = [
-        // TechSolutions Sénégal
-        {
-          id: 'mock-ts-1',
-          name: 'Ordinateur Pro 14" M3',
-          description: 'Ordinateur professionnel haute performance avec processeur M3',
-          price: 1450000,
-          originalPrice: 1450000,
-          discount: 0,
-          rating: 4.8,
-          reviews: 124,
-          image: 'https://images.unsplash.com/photo-1525547719571-a2d4ac8945e2?q=80&w=800&auto=format&fit=crop',
-          images: ['https://images.unsplash.com/photo-1525547719571-a2d4ac8945e2?q=80&w=800&auto=format&fit=crop'],
-          category: 'Électronique',
-          categoryId: '1',
-          brand: 'TechSolutions',
-          brandId: 'tech',
-          stock: 15,
-          inStock: true,
-          colors: ['Gris', 'Argent'],
-          sizes: ['14"'],
-          weight: 1.4,
-          dimensions: { longueur: 30, largeur: 21, hauteur: 1.5 },
-          features: ['Processeur M3', '16GB RAM', '512GB SSD', 'Garantie 2 ans'],
-          tags: ['nouveau', 'populaire', 'professionnel'],
-          company: 'TechSolutions Sénégal',
-          companyId: '1',
-          companyLogo: '/Res/iwaria-inc-tvTFMDwH-cQ-unsplash.jpg',
-          seller: {
-            name: 'TechSolutions Sénégal',
-            logo: '/Res/iwaria-inc-tvTFMDwH-cQ-unsplash.jpg',
-            rating: 4.9,
-            verified: true,
-            location: 'Dakar, Sénégal'
-          },
-          isNew: false,
-          isPopular: true,
-          isOnSale: false,
-          shipping: { free: true, estimated: '2-3 jours', return: '30 jours' },
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        },
-        {
-          id: 'mock-ts-2',
-          name: 'Casque Sans Fil ANC',
-          description: 'Casque audio premium avec réduction de bruit active',
-          price: 165000,
-          originalPrice: 165000,
-          discount: 0,
-          rating: 4.7,
-          reviews: 89,
-          image: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?q=80&w=800&auto=format&fit=crop',
-          images: ['https://images.unsplash.com/photo-1505740420928-5e560c06d30e?q=80&w=800&auto=format&fit=crop'],
-          category: 'Électronique',
-          categoryId: '1',
-          brand: 'TechSolutions',
-          brandId: 'tech',
-          stock: 25,
-          inStock: true,
-          colors: ['Noir', 'Blanc'],
-          sizes: ['Unique'],
-          weight: 0.3,
-          dimensions: { longueur: 20, largeur: 18, hauteur: 8 },
-          features: ['ANC', 'Bluetooth 5.0', 'Autonomie 30h', 'Garantie 1 an'],
-          tags: ['populaire', 'audio'],
-          company: 'TechSolutions Sénégal',
-          companyId: '1',
-          companyLogo: '/Res/iwaria-inc-tvTFMDwH-cQ-unsplash.jpg',
-          seller: {
-            name: 'TechSolutions Sénégal',
-            logo: '/Res/iwaria-inc-tvTFMDwH-cQ-unsplash.jpg',
-            rating: 4.9,
-            verified: true,
-            location: 'Dakar, Sénégal'
-          },
-          isNew: false,
-          isPopular: true,
-          isOnSale: false,
-          shipping: { free: true, estimated: '2-3 jours', return: '30 jours' },
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        },
-        {
-          id: 'mock-ts-3',
-          name: 'Clavier Mécanique Pro',
-          description: 'Clavier mécanique rétroéclairé pour gaming et bureautique',
-          price: 120000,
-          originalPrice: 120000,
-          discount: 0,
-          rating: 4.6,
-          reviews: 67,
-          image: 'https://images.unsplash.com/photo-1541140532154-b024d705b90a?q=80&w=800&auto=format&fit=crop',
-          images: ['https://images.unsplash.com/photo-1541140532154-b024d705b90a?q=80&w=800&auto=format&fit=crop'],
-          category: 'Électronique',
-          categoryId: '1',
-          brand: 'TechSolutions',
-          brandId: 'tech',
-          stock: 18,
-          inStock: true,
-          colors: ['Noir', 'RGB'],
-          sizes: ['Plein format'],
-          weight: 1.2,
-          dimensions: { longueur: 44, largeur: 13, hauteur: 3 },
-          features: ['Switches mécaniques', 'Rétroéclairage RGB', 'Anti-ghosting', 'Garantie 1 an'],
-          tags: ['gaming', 'professionnel'],
-          company: 'TechSolutions Sénégal',
-          companyId: '1',
-          companyLogo: '/Res/iwaria-inc-tvTFMDwH-cQ-unsplash.jpg',
-          seller: {
-            name: 'TechSolutions Sénégal',
-            logo: '/Res/iwaria-inc-tvTFMDwH-cQ-unsplash.jpg',
-            rating: 4.9,
-            verified: true,
-            location: 'Dakar, Sénégal'
-          },
-          isNew: false,
-          isPopular: true,
-          isOnSale: false,
-          shipping: { free: true, estimated: '2-3 jours', return: '30 jours' },
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        },
-        {
-          id: 'mock-ts-4',
-          name: 'Caméra 4K Créateur',
-          description: 'Caméra 4K professionnelle pour création de contenu',
-          price: 890000,
-          originalPrice: 890000,
-          discount: 0,
-          rating: 4.9,
-          reviews: 156,
-          image: 'https://images.unsplash.com/photo-1485846234645-a62644f84728?q=80&w=800&auto=format&fit=crop',
-          images: ['https://images.unsplash.com/photo-1485846234645-a62644f84728?q=80&w=800&auto=format&fit=crop'],
-          category: 'Électronique',
-          categoryId: '1',
-          brand: 'TechSolutions',
-          brandId: 'tech',
-          stock: 8,
-          inStock: true,
-          colors: ['Noir'],
-          sizes: ['Unique'],
-          weight: 0.6,
-          dimensions: { longueur: 10, largeur: 7, hauteur: 5 },
-          features: ['4K 60fps', 'Stabilisation', 'Wi-Fi', 'Garantie 2 ans'],
-          tags: ['nouveau', 'populaire', 'professionnel'],
-          company: 'TechSolutions Sénégal',
-          companyId: '1',
-          companyLogo: '/Res/iwaria-inc-tvTFMDwH-cQ-unsplash.jpg',
-          seller: {
-            name: 'TechSolutions Sénégal',
-            logo: '/Res/iwaria-inc-tvTFMDwH-cQ-unsplash.jpg',
-            rating: 4.9,
-            verified: true,
-            location: 'Dakar, Sénégal'
-          },
-          isNew: true,
-          isPopular: true,
-          isOnSale: false,
-          shipping: { free: true, estimated: '2-3 jours', return: '30 jours' },
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        },
-        // Boutique Marie Diallo
-        {
-          id: 'mock-bm-1',
-          name: 'Robe Wax Royale',
-          description: 'Robe élégante en tissu wax authentique',
-          price: 95000,
-          originalPrice: 95000,
-          discount: 0,
-          rating: 4.8,
-          reviews: 203,
-          image: 'https://images.unsplash.com/photo-1594633313593-bab3825d0caf?q=80&w=800&auto=format&fit=crop',
-          images: ['https://images.unsplash.com/photo-1594633313593-bab3825d0caf?q=80&w=800&auto=format&fit=crop'],
-          category: 'Vêtements & Mode',
-          categoryId: '2',
-          brand: 'Boutique Marie Diallo',
-          brandId: 'boutique',
-          stock: 45,
-          inStock: true,
-          colors: ['Multi', 'Rouge', 'Bleu'],
-          sizes: ['S', 'M', 'L', 'XL'],
-          weight: 0.5,
-          dimensions: { longueur: 100, largeur: 50, hauteur: 1 },
-          features: ['Tissu wax authentique', 'Taille ajustable', 'Lavable', 'Garantie qualité'],
-          tags: ['populaire', 'traditionnel'],
-          company: 'Boutique Marie Diallo',
-          companyId: '2',
-          companyLogo: '/Res/boutque.jpg',
-          seller: {
-            name: 'Boutique Marie Diallo',
-            logo: '/Res/boutque.jpg',
-            rating: 4.7,
-            verified: true,
-            location: 'Dakar, Sénégal'
-          },
-          isNew: false,
-          isPopular: true,
-          isOnSale: false,
-          shipping: { free: true, estimated: '2-3 jours', return: '30 jours' },
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        },
-        {
-          id: 'mock-bm-2',
-          name: 'Sac Cuir Artisan',
-          description: 'Sac en cuir artisanal fait main',
-          price: 78000,
-          originalPrice: 78000,
-          discount: 0,
-          rating: 4.6,
-          reviews: 142,
-          image: 'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?q=80&w=800&auto=format&fit=crop',
-          images: ['https://images.unsplash.com/photo-1553062407-98eeb64c6a62?q=80&w=800&auto=format&fit=crop'],
-          category: 'Vêtements & Mode',
-          categoryId: '2',
-          brand: 'Boutique Marie Diallo',
-          brandId: 'boutique',
-          stock: 32,
-          inStock: true,
-          colors: ['Marron', 'Noir'],
-          sizes: ['Unique'],
-          weight: 0.8,
-          dimensions: { longueur: 35, largeur: 25, hauteur: 15 },
-          features: ['Cuir véritable', 'Fait main', 'Fermeture sécurisée', 'Garantie artisan'],
-          tags: ['artisan', 'premium'],
-          company: 'Boutique Marie Diallo',
-          companyId: '2',
-          companyLogo: '/Res/boutque.jpg',
-          seller: {
-            name: 'Boutique Marie Diallo',
-            logo: '/Res/boutque.jpg',
-            rating: 4.7,
-            verified: true,
-            location: 'Dakar, Sénégal'
-          },
-          isNew: false,
-          isPopular: true,
-          isOnSale: false,
-          shipping: { free: true, estimated: '2-3 jours', return: '30 jours' },
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        },
-        {
-          id: 'mock-bm-3',
-          name: 'Boubou Homme Brodé',
-          description: 'Boubou traditionnel brodé main pour homme',
-          price: 65000,
-          originalPrice: 65000,
-          discount: 0,
-          rating: 4.7,
-          reviews: 178,
-          image: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?q=80&w=800&auto=format&fit=crop',
-          images: ['https://images.unsplash.com/photo-1556821840-3a63f95609a7?q=80&w=800&auto=format&fit=crop'],
-          category: 'Vêtements & Mode',
-          categoryId: '2',
-          brand: 'Boutique Marie Diallo',
-          brandId: 'boutique',
-          stock: 28,
-          inStock: true,
-          colors: ['Blanc', 'Bleu', 'Beige'],
-          sizes: ['S', 'M', 'L', 'XL'],
-          weight: 0.7,
-          dimensions: { longueur: 120, largeur: 60, hauteur: 1 },
-          features: ['Brodé main', 'Tissu premium', 'Taille ajustable', 'Traditionnel'],
-          tags: ['traditionnel', 'populaire'],
-          company: 'Boutique Marie Diallo',
-          companyId: '2',
-          companyLogo: '/Res/boutque.jpg',
-          seller: {
-            name: 'Boutique Marie Diallo',
-            logo: '/Res/boutque.jpg',
-            rating: 4.7,
-            verified: true,
-            location: 'Dakar, Sénégal'
-          },
-          isNew: false,
-          isPopular: true,
-          isOnSale: false,
-          shipping: { free: true, estimated: '2-3 jours', return: '30 jours' },
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        },
-        {
-          id: 'mock-bm-4',
-          name: 'Sandales Cuir Premium',
-          description: 'Sandales en cuir premium confortables',
-          price: 35000,
-          originalPrice: 35000,
-          discount: 0,
-          rating: 4.5,
-          reviews: 234,
-          image: 'https://images.unsplash.com/photo-1544966503-7cc4ac881e57?q=80&w=800&auto=format&fit=crop',
-          images: ['https://images.unsplash.com/photo-1544966503-7cc4ac881e57?q=80&w=800&auto=format&fit=crop'],
-          category: 'Vêtements & Mode',
-          categoryId: '2',
-          brand: 'Boutique Marie Diallo',
-          brandId: 'boutique',
-          stock: 56,
-          inStock: true,
-          colors: ['Marron', 'Noir'],
-          sizes: ['40', '41', '42', '43', '44', '45'],
-          weight: 0.4,
-          dimensions: { longueur: 28, largeur: 10, hauteur: 3 },
-          features: ['Cuir véritable', 'Semelle confort', 'Lavable', 'Toutes tailles'],
-          tags: ['confort', 'premium'],
-          company: 'Boutique Marie Diallo',
-          companyId: '2',
-          companyLogo: '/Res/boutque.jpg',
-          seller: {
-            name: 'Boutique Marie Diallo',
-            logo: '/Res/boutque.jpg',
-            rating: 4.7,
-            verified: true,
-            location: 'Dakar, Sénégal'
-          },
-          isNew: false,
-          isPopular: true,
-          isOnSale: false,
-          shipping: { free: true, estimated: '2-3 jours', return: '30 jours' },
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        },
-        // Pharmacie Moderne
-        {
-          id: 'mock-pm-1',
-          name: 'Vitamine C 1000mg',
-          description: 'Complément alimentaire vitamine C haute dose',
-          price: 8500,
-          originalPrice: 8500,
-          discount: 0,
-          rating: 4.6,
-          reviews: 312,
-          image: 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?q=80&w=800&auto=format&fit=crop',
-          images: ['https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?q=80&w=800&auto=format&fit=crop'],
-          category: 'Pharmacie',
-          categoryId: '9',
-          brand: 'Pharmacie Moderne',
-          brandId: 'pharma',
-          stock: 120,
-          inStock: true,
-          colors: ['Orange'],
-          sizes: ['60 comprimés'],
-          weight: 0.1,
-          dimensions: { longueur: 8, largeur: 4, hauteur: 4 },
-          features: ['1000mg par comprimé', 'Complément alimentaire', 'Boîte de 60', 'Garantie qualité'],
-          tags: ['santé', 'populaire'],
-          company: 'Pharmacie Moderne',
-          companyId: '3',
-          companyLogo: '/Res/SuperMarche.jpg',
-          seller: {
-            name: 'Pharmacie Moderne',
-            logo: '/Res/SuperMarche.jpg',
-            rating: 4.8,
-            verified: true,
-            location: 'Dakar, Sénégal'
-          },
-          isNew: false,
-          isPopular: true,
-          isOnSale: false,
-          shipping: { free: true, estimated: '2-3 jours', return: '30 jours' },
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        },
-        {
-          id: 'mock-pm-2',
-          name: 'Gel Hydroalcoolique',
-          description: 'Gel désinfectant pour les mains 500ml',
-          price: 2500,
-          originalPrice: 2500,
-          discount: 0,
-          rating: 4.8,
-          reviews: 456,
-          image: 'https://images.unsplash.com/photo-1612817288484-6f916006741a?q=80&w=800&auto=format&fit=crop',
-          images: ['https://images.unsplash.com/photo-1612817288484-6f916006741a?q=80&w=800&auto=format&fit=crop'],
-          category: 'Pharmacie',
-          categoryId: '9',
-          brand: 'Pharmacie Moderne',
-          brandId: 'pharma',
-          stock: 200,
-          inStock: true,
-          colors: ['Transparent'],
-          sizes: ['500ml'],
-          weight: 0.6,
-          dimensions: { longueur: 8, largeur: 6, hauteur: 20 },
-          features: ['70% alcool', 'Sans rinçage', 'Hydratant', 'Pratique'],
-          tags: ['hygiène', 'essentiel'],
-          company: 'Pharmacie Moderne',
-          companyId: '3',
-          companyLogo: '/Res/SuperMarche.jpg',
-          seller: {
-            name: 'Pharmacie Moderne',
-            logo: '/Res/SuperMarche.jpg',
-            rating: 4.8,
-            verified: true,
-            location: 'Dakar, Sénégal'
-          },
-          isNew: false,
-          isPopular: true,
-          isOnSale: false,
-          shipping: { free: true, estimated: '2-3 jours', return: '30 jours' },
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        },
-        {
-          id: 'mock-pm-3',
-          name: 'Crème Solaire SPF50',
-          description: 'Protection solaire haute performance SPF50',
-          price: 9800,
-          originalPrice: 9800,
-          discount: 0,
-          rating: 4.7,
-          reviews: 189,
-          image: 'https://images.unsplash.com/photo-1556228578-0d85b1a4d571?q=80&w=800&auto=format&fit=crop',
-          images: ['https://images.unsplash.com/photo-1556228578-0d85b1a4d571?q=80&w=800&auto=format&fit=crop'],
-          category: 'Pharmacie',
-          categoryId: '9',
-          brand: 'Pharmacie Moderne',
-          brandId: 'pharma',
-          stock: 85,
-          inStock: true,
-          colors: ['Blanc'],
-          sizes: ['200ml'],
-          weight: 0.3,
-          dimensions: { longueur: 6, largeur: 4, hauteur: 18 },
-          features: ['SPF50', 'Résistant à l\'eau', 'Hypoallergénique', 'Protection UVA/UVB'],
-          tags: ['santé', 'protection'],
-          company: 'Pharmacie Moderne',
-          companyId: '3',
-          companyLogo: '/Res/SuperMarche.jpg',
-          seller: {
-            name: 'Pharmacie Moderne',
-            logo: '/Res/SuperMarche.jpg',
-            rating: 4.8,
-            verified: true,
-            location: 'Dakar, Sénégal'
-          },
-          isNew: false,
-          isPopular: true,
-          isOnSale: false,
-          shipping: { free: true, estimated: '2-3 jours', return: '30 jours' },
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        },
-        {
-          id: 'mock-pm-4',
-          name: 'Tensiomètre Bras',
-          description: 'Tensiomètre électronique pour bras professionnel',
-          price: 29500,
-          originalPrice: 29500,
-          discount: 0,
-          rating: 4.9,
-          reviews: 267,
-          image: 'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?q=80&w=800&auto=format&fit=crop',
-          images: ['https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?q=80&w=800&auto=format&fit=crop'],
-          category: 'Pharmacie',
-          categoryId: '9',
-          brand: 'Pharmacie Moderne',
-          brandId: 'pharma',
-          stock: 42,
-          inStock: true,
-          colors: ['Blanc', 'Bleu'],
-          sizes: ['Unique'],
-          weight: 0.5,
-          dimensions: { longueur: 15, largeur: 12, hauteur: 8 },
-          features: ['Électronique', 'Écran LCD', 'Mémoire', 'Précis', 'Garantie 2 ans'],
-          tags: ['santé', 'médical', 'populaire'],
-          company: 'Pharmacie Moderne',
-          companyId: '3',
-          companyLogo: '/Res/SuperMarche.jpg',
-          seller: {
-            name: 'Pharmacie Moderne',
-            logo: '/Res/SuperMarche.jpg',
-            rating: 4.8,
-            verified: true,
-            location: 'Dakar, Sénégal'
-          },
-          isNew: false,
-          isPopular: true,
-          isOnSale: false,
-          shipping: { free: true, estimated: '2-3 jours', return: '30 jours' },
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        }
-      ];
       
-      // Combiner les produits de l'API avec les produits mockés (éviter les doublons)
-      const existingProductNames = new Set(transformedProducts.map(p => p.name?.toLowerCase()));
-      const uniqueMockProducts = mockProducts.filter(mock => !existingProductNames.has(mock.name.toLowerCase()));
+      // Utiliser UNIQUEMENT les produits réels de l'API - Plus de produits mock
+      const allProducts = transformedProducts;
       
-      const allProducts = [...transformedProducts, ...uniqueMockProducts];
       
-      console.log('✅ Produits API:', transformedProducts.length, 'Produits mockés ajoutés:', uniqueMockProducts.length, 'Total:', allProducts.length);
       
       // Stocker tous les produits (sans filtres)
       setProducts(allProducts);
@@ -1008,28 +717,75 @@ const CatalogPage: React.FC = () => {
     }
   };
 
-  const loadCompanies = async () => {
+  const loadCompanies = async (): Promise<any[]> => {
+    // Éviter les appels multiples simultanés
+    if (companiesLoadingRef.current) {
+      console.log('⏳ Chargement des entreprises déjà en cours, attente...');
+      // Attendre que le chargement en cours se termine
+      while (companiesLoadingRef.current) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      // Retourner les entreprises du state
+      return companies.filter((c: any) => c.id !== 'all');
+    }
+    
+    // Vérifier si les entreprises sont déjà chargées
+    if (companies.length > 1) {
+      console.log('✅ Entreprises déjà chargées, utilisation du cache');
+      return companies.filter((c: any) => c.id !== 'all');
+    }
+    
     try {
-      const response = await apiService.getCompanies();
+      companiesLoadingRef.current = true;
+      setCompaniesLoading(true);
+      console.log('📦 Chargement des entreprises depuis l\'API...');
+      
+      const response: any = await apiService.getCompanies();
       console.log('Entreprises chargées:', response);
+      
+      const companiesList = response?.results || (Array.isArray(response) ? response : []);
       
       const transformedCompanies = [
         { id: 'all', name: 'Toutes les entreprises', count: 0, icon: '🏢' },
-        ...(response.results?.map((company: any) => ({
-          id: company.id,
-          name: company.nom || company.name,
-          count: 0, // Sera mis à jour après le chargement des produits
-          icon: '🏢'
-        })) || [])
+        ...companiesList.map((company: any) => {
+          // Formater le logo correctement (URL complète si c'est un chemin relatif)
+          let logoUrl: string | null = null;
+          if (company.logo) {
+            if (typeof company.logo === 'string') {
+              if (company.logo.startsWith('http')) {
+                logoUrl = company.logo;
+              } else {
+                // C'est un chemin relatif, ajouter l'URL de base
+                logoUrl = `http://localhost:8000${company.logo.startsWith('/') ? company.logo : `/${company.logo}`}`;
+              }
+            }
+          }
+          
+          return {
+            id: company.id,
+            name: company.nom || company.name,
+            logo: logoUrl || getCompanyLogo(company.id),
+            count: 0, // Sera mis à jour après le chargement des produits
+            icon: '🏢'
+          };
+        })
       ];
       
       setCompanies(transformedCompanies);
+      console.log('✅ Entreprises transformées:', transformedCompanies.length);
+      
+      // Retourner les entreprises (sans l'option "Toutes")
+      return transformedCompanies.filter((c: any) => c.id !== 'all');
     } catch (error) {
       console.error('Erreur lors du chargement des entreprises:', error);
       // En cas d'erreur, utiliser seulement l'entreprise "Toutes"
       setCompanies([
         { id: 'all', name: 'Toutes les entreprises', count: 0, icon: '🏢' }
       ]);
+      return [];
+    } finally {
+      companiesLoadingRef.current = false;
+      setCompaniesLoading(false);
     }
   };
 
@@ -1052,150 +808,6 @@ const CatalogPage: React.FC = () => {
     }
   };
 
-  const mockProducts = [
-    {
-      id: '1',
-      name: 'iPhone 15 Pro',
-      description: 'Le smartphone le plus avancé avec puce A17 Pro et caméra révolutionnaire',
-      price: 850000,
-      originalPrice: 950000,
-      discount: 10,
-      rating: 4.8,
-      reviews: 124,
-      image: 'https://images.pexels.com/photos/788946/pexels-photo-788946.jpeg?auto=compress&cs=tinysrgb&w=400&h=400&dpr=2',
-      images: [
-        'https://images.pexels.com/photos/788946/pexels-photo-788946.jpeg?auto=compress&cs=tinysrgb&w=400&h=400&dpr=2',
-        'https://images.pexels.com/photos/1092644/pexels-photo-1092644.jpeg?auto=compress&cs=tinysrgb&w=400&h=400&dpr=2',
-      ],
-      category: 'Électronique',
-      brand: 'Apple',
-      inStock: true,
-      stockCount: 15,
-      isNew: true,
-      isFavorite: false,
-      colors: ['Titane Naturel', 'Titane Bleu', 'Titane Blanc', 'Titane Noir'],
-      sizes: ['128GB', '256GB', '512GB', '1TB'],
-      seller: {
-        name: 'TechSolutions Sénégal',
-        rating: 4.9,
-        logo: 'https://images.pexels.com/photos/3184291/pexels-photo-3184291.jpeg?auto=compress&cs=tinysrgb&w=50&h=50&dpr=2',
-        location: 'Dakar, Sénégal',
-        verified: true,
-      },
-      shipping: {
-        free: true,
-        time: '24-48h',
-        methods: ['Livraison Express', 'Point Relais'],
-      },
-      features: ['5G', 'Face ID', 'Caméra Pro', 'USB-C'],
-    },
-    {
-      id: '2',
-      name: 'MacBook Air M3',
-      description: 'Ordinateur portable ultra-fin avec puce M3 et autonomie exceptionnelle',
-      price: 1150000,
-      originalPrice: 1150000,
-      discount: 0,
-      rating: 4.9,
-      reviews: 89,
-      image: 'https://images.pexels.com/photos/205421/pexels-photo-205421.jpeg?auto=compress&cs=tinysrgb&w=400&h=400&dpr=2',
-      images: [
-        'https://images.pexels.com/photos/205421/pexels-photo-205421.jpeg?auto=compress&cs=tinysrgb&w=400&h=400&dpr=2',
-      ],
-      category: 'Électronique',
-      brand: 'Apple',
-      inStock: true,
-      stockCount: 8,
-      isNew: false,
-      isFavorite: true,
-      colors: ['Gris Sidéral', 'Argent', 'Or', 'Minuit'],
-      sizes: ['256GB', '512GB', '1TB', '2TB'],
-      seller: {
-        name: 'TechSolutions Sénégal',
-        rating: 4.9,
-        logo: 'https://images.pexels.com/photos/3184291/pexels-photo-3184291.jpeg?auto=compress&cs=tinysrgb&w=50&h=50&dpr=2',
-        location: 'Dakar, Sénégal',
-        verified: true,
-      },
-      shipping: {
-        free: true,
-        time: '24-48h',
-        methods: ['Livraison Express'],
-      },
-      features: ['Puce M3', '18h autonomie', 'Écran Retina', 'Touch ID'],
-    },
-    {
-      id: '3',
-      name: 'Robe Élégante Africaine',
-      description: 'Robe traditionnelle moderne en wax premium, confectionnée par des artisans locaux',
-      price: 35000,
-      originalPrice: 45000,
-      discount: 22,
-      rating: 4.6,
-      reviews: 67,
-      image: 'https://images.pexels.com/photos/1536619/pexels-photo-1536619.jpeg?auto=compress&cs=tinysrgb&w=400&h=400&dpr=2',
-      images: [
-        'https://images.pexels.com/photos/1536619/pexels-photo-1536619.jpeg?auto=compress&cs=tinysrgb&w=400&h=400&dpr=2',
-      ],
-      category: 'Mode & Beauté',
-      brand: 'Artisan Local',
-      inStock: true,
-      stockCount: 25,
-      isNew: false,
-      isFavorite: false,
-      colors: ['Bleu Royal', 'Rouge Passion', 'Vert Émeraude', 'Jaune Soleil'],
-      sizes: ['S', 'M', 'L', 'XL', 'XXL'],
-      seller: {
-        name: 'Boutique Marie Diallo',
-        rating: 4.7,
-        logo: 'https://images.pexels.com/photos/4386476/pexels-photo-4386476.jpeg?auto=compress&cs=tinysrgb&w=50&h=50&dpr=2',
-        location: 'Dakar, Sénégal',
-        verified: true,
-      },
-      shipping: {
-        free: false,
-        cost: 2500,
-        time: '2-3 jours',
-        methods: ['Livraison Standard', 'Point Relais'],
-      },
-      features: ['Wax Authentique', 'Fait Main', 'Coupe Moderne', 'Artisan Local'],
-    },
-    {
-      id: '4',
-      name: 'Air Jordan 1 Retro',
-      description: 'Baskets iconiques Air Jordan 1 en cuir premium avec design légendaire',
-      price: 145000,
-      originalPrice: 145000,
-      discount: 0,
-      rating: 4.9,
-      reviews: 203,
-      image: 'https://images.pexels.com/photos/2529148/pexels-photo-2529148.jpeg?auto=compress&cs=tinysrgb&w=400&h=400&dpr=2',
-      images: [
-        'https://images.pexels.com/photos/2529148/pexels-photo-2529148.jpeg?auto=compress&cs=tinysrgb&w=400&h=400&dpr=2',
-      ],
-      category: 'Mode & Beauté',
-      brand: 'Nike',
-      inStock: true,
-      stockCount: 12,
-      isNew: true,
-      isFavorite: true,
-      colors: ['Chicago', 'Bred', 'Royal', 'Shadow', 'Court Purple'],
-      sizes: ['38', '39', '40', '41', '42', '43', '44', '45'],
-      seller: {
-        name: 'Boutique Marie Diallo',
-        rating: 4.7,
-        logo: 'https://images.pexels.com/photos/4386476/pexels-photo-4386476.jpeg?auto=compress&cs=tinysrgb&w=50&h=50&dpr=2',
-        location: 'Dakar, Sénégal',
-        verified: true,
-      },
-      shipping: {
-        free: true,
-        time: '24-48h',
-        methods: ['Livraison Express', 'Point Relais'],
-      },
-      features: ['Cuir Premium', 'Semelle Air', 'Design Iconique', 'Édition Limitée'],
-    },
-  ];
 
 
   const ProductCard = ({ product }: { product: any }) => (
@@ -1215,7 +827,38 @@ const CatalogPage: React.FC = () => {
           alt={product.name}
           className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
           onError={(e) => {
-            e.currentTarget.src = 'https://images.pexels.com/photos/788946/pexels-photo-788946.jpeg?auto=compress&cs=tinysrgb&w=400&h=400&dpr=2';
+            // Si l'image échoue, essayer de corriger l'URL
+            const target = e.currentTarget as HTMLImageElement;
+            const currentSrc = target.src;
+            
+            // Essayer de corriger l'URL si c'est un chemin localhost mal formé
+            if (currentSrc.includes('localhost:8000')) {
+              // Extraire le chemin de l'image
+              let imagePath = currentSrc.replace(/^https?:\/\/[^/]+/, '');
+              
+              // S'assurer que le chemin commence par /media/
+              if (!imagePath.startsWith('/media/')) {
+                // Si le chemin ne commence pas par /media/, l'ajouter
+                if (imagePath.startsWith('/')) {
+                  imagePath = `/media${imagePath}`;
+                } else {
+                  imagePath = `/media/${imagePath}`;
+                }
+                const correctedUrl = `http://localhost:8000${imagePath}`;
+                console.log(`🔄 Tentative de correction de l'URL d'image: ${currentSrc} -> ${correctedUrl}`);
+                target.src = correctedUrl;
+                return; // Laisser le navigateur réessayer avec la nouvelle URL
+              }
+            }
+            
+            // Si l'image ne peut pas être chargée, masquer le produit
+            console.error(`❌ Impossible de charger l'image: ${currentSrc}`);
+            target.style.display = 'none';
+            // Masquer toute la carte produit
+            const card = target.closest('.bg-white, .dark\\:bg-dark-800');
+            if (card) {
+              (card as HTMLElement).style.display = 'none';
+            }
           }}
         />
         
@@ -1266,8 +909,12 @@ const CatalogPage: React.FC = () => {
               alt={product.company}
               className="w-full h-full object-cover"
               onError={(e) => {
-                e.currentTarget.style.display = 'none';
-                e.currentTarget.nextElementSibling.style.display = 'flex';
+                const target = e.currentTarget as HTMLImageElement;
+                target.style.display = 'none';
+                const nextSibling = target.nextElementSibling as HTMLElement;
+                if (nextSibling) {
+                  nextSibling.style.display = 'flex';
+                }
               }}
             />
             <Package className="w-3 h-3 text-blue-600 hidden" />
@@ -1343,8 +990,7 @@ const CatalogPage: React.FC = () => {
             variant="primary"
             size="sm"
             className="flex-1"
-            onClick={(e) => {
-              e.stopPropagation();
+            onClick={() => {
               handleAddToCart(product);
             }}
             disabled={!product.inStock}
@@ -1355,8 +1001,7 @@ const CatalogPage: React.FC = () => {
           <Button
             variant="secondary"
             size="sm"
-            onClick={(e) => {
-              e.stopPropagation();
+            onClick={() => {
               setSelectedProduct(product);
             }}
           >
@@ -1516,7 +1161,7 @@ const CatalogPage: React.FC = () => {
           {/* Reset Filters */}
           <div className="card-premium p-4">
             <Button 
-              variant="outline" 
+              variant="secondary" 
               size="sm" 
               onClick={resetFilters}
               className="w-full"
@@ -1617,7 +1262,7 @@ const CatalogPage: React.FC = () => {
           {totalPages > 1 && (
             <div className="mt-8 flex items-center justify-center space-x-2">
               <Button
-                variant="outline"
+                variant="secondary"
                 size="sm"
                 onClick={() => handlePageChange(currentPage - 1)}
                 disabled={currentPage === 1}
@@ -1648,7 +1293,7 @@ const CatalogPage: React.FC = () => {
               </div>
               
               <Button
-                variant="outline"
+                variant="secondary"
                 size="sm"
                 onClick={() => handlePageChange(currentPage + 1)}
                 disabled={currentPage === totalPages}
@@ -1686,6 +1331,11 @@ const CatalogPage: React.FC = () => {
                       src={selectedProduct.image}
                       alt={selectedProduct.name}
                       className="w-full h-full object-cover"
+                      onError={(e) => {
+                        const target = e.currentTarget as HTMLImageElement;
+                        console.error(`❌ Impossible de charger l'image: ${target.src}`);
+                        target.style.display = 'none';
+                      }}
                     />
                   </div>
                   
@@ -1697,6 +1347,11 @@ const CatalogPage: React.FC = () => {
                           src={img}
                           alt={`${selectedProduct.name} ${index + 1}`}
                           className="w-16 h-16 rounded-lg object-cover border-2 border-gray-200 dark:border-gray-600 cursor-pointer hover:border-primary-500"
+                          onError={(e) => {
+                            const target = e.currentTarget as HTMLImageElement;
+                            console.error(`❌ Impossible de charger l'image: ${target.src}`);
+                            target.style.display = 'none';
+                          }}
                         />
                       ))}
                     </div>

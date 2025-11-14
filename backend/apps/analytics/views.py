@@ -184,14 +184,16 @@ def dashboard_summary(request):
         
         print(f"📊 Valeurs finales - Revenus: {fallback_revenue}, Utilisateurs: {fallback_active_users}, Entreprises: {fallback_companies}")
         
+        # TOUJOURS retourner les vraies données, même si elles sont à 0
+        # Pas de fallback pour éviter d'afficher de fausses données
         data = {
-            'users_count': total_users if total_users > 0 else 1247,
-            'companies_count': real_companies if real_companies > 0 else fallback_companies,
-            'products_count': total_products if total_products > 0 else 2246,
-            'total_revenue': float(real_revenue if real_revenue > 0 else fallback_revenue),
-            'active_users_count': real_active_users if real_active_users > 0 else fallback_active_users,
-            'new_users_this_month': real_new_users if real_new_users > 0 else max(1, int(67 * (multiplier / 30))),
-            'new_companies_this_month': real_new_companies if real_new_companies > 0 else max(1, int(7 * (multiplier / 30))),
+            'users_count': total_users,  # Toujours la vraie valeur, même si 0
+            'companies_count': real_companies,  # Toujours la vraie valeur
+            'products_count': total_products,  # Toujours la vraie valeur
+            'total_revenue': float(real_revenue),  # Toujours la vraie valeur
+            'active_users_count': real_active_users,  # Toujours la vraie valeur
+            'new_users_this_month': real_new_users,  # Toujours la vraie valeur
+            'new_companies_this_month': real_new_companies,  # Toujours la vraie valeur
             'users_growth_percentage': round(real_users_growth, 1),
             'companies_growth_percentage': round(real_companies_growth, 1),
             'revenue_growth_percentage': round(real_revenue_growth, 1),
@@ -199,6 +201,8 @@ def dashboard_summary(request):
             'period': period,
             'start_date': start_date.isoformat()
         }
+        
+        print(f"📊 Données réelles retournées - Utilisateurs: {total_users}, Actifs: {real_active_users}, Nouveaux: {real_new_users}")
         
         return Response(data)
         
@@ -410,6 +414,17 @@ def entrepreneur_dashboard(request):
         total_products = entrepreneur_products.count()
         total_stock = entrepreneur_products.aggregate(total=Sum('stock'))['total'] or 0
         
+        # Calculer la valeur totale du stock (prix_achat * stock pour chaque produit)
+        # IMPORTANT: On ne peut pas faire Sum('prix_achat') * Sum('stock') car c'est mathématiquement incorrect
+        # Il faut calculer la somme de (prix_achat * stock) pour chaque produit
+        stock_value = 0
+        for product in entrepreneur_products:
+            prix_achat = float(product.prix_achat) if product.prix_achat else 0
+            stock = int(product.stock) if product.stock else 0
+            stock_value += prix_achat * stock
+        
+        print(f"💰 Valeur du stock calculée pour l'entrepreneur: {stock_value} XOF ({total_products} produits)")
+        
         # Clients de l'entrepreneur
         entrepreneur_clients = entrepreneur.ventes_realisees.values('client').distinct().count()
         
@@ -447,6 +462,7 @@ def entrepreneur_dashboard(request):
             'total_revenue': float(entrepreneur_revenue if entrepreneur_revenue > 0 else fallback_entrepreneur_revenue),
             'products_count': total_products if total_products > 0 else fallback_products,
             'total_stock': total_stock if total_stock > 0 else fallback_stock,
+            'stock_value': float(stock_value),  # Toujours retourner la vraie valeur, même si 0
             'clients_count': entrepreneur_clients if entrepreneur_clients > 0 else fallback_clients,
             'sales_this_month': sales_this_month if sales_this_month > 0 else 12,
             'revenue_this_month': float(revenue_this_month if revenue_this_month > 0 else 125000),
