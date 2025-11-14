@@ -33,7 +33,23 @@ function App() {
                   <div className="min-h-screen bg-gradient-premium dark:bg-dark-900 transition-all duration-500">
                     <ParticlesBackground />
                   <Routes>
-                    {/* Routes d'authentification */}
+                    {/* Routes d'authentification - définies directement pour éviter les problèmes de routing */}
+                    <Route 
+                      path="/auth/login" 
+                      element={
+                        <Suspense fallback={<LoadingScreen />}>
+                          <AuthLayout />
+                        </Suspense>
+                      } 
+                    />
+                    <Route 
+                      path="/auth/register" 
+                      element={
+                        <Suspense fallback={<LoadingScreen />}>
+                          <AuthLayout />
+                        </Suspense>
+                      } 
+                    />
                     <Route 
                       path="/auth/*" 
                       element={
