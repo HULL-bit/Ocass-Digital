@@ -230,6 +230,68 @@ print("=" * 70)
 # Redis Configuration - utiliser l'URL fournie par Render si disponible
 REDIS_URL = env('REDIS_URL', default='redis://localhost:6379/0')
 
+# Debug: Afficher l'URL Redis
+print(f"[PRODUCTION] REDIS_URL: {REDIS_URL}")
+
+# Override CACHES pour utiliser Redis de Render
+# S'assurer que CACHES utilise bien REDIS_URL et non localhost
+CACHES = {
+    'default': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': REDIS_URL,
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            'SERIALIZER': 'django_redis.serializers.json.JSONSerializer',
+            'COMPRESSOR': 'django_redis.compressors.zlib.ZlibCompressor',
+            # Options de connexion pour éviter les erreurs
+            'CONNECTION_POOL_KWARGS': {
+                'retry_on_timeout': True,
+                'socket_connect_timeout': 5,
+                'socket_timeout': 5,
+            },
+            # Ignorer les erreurs de connexion pour le cache
+            'IGNORE_EXCEPTIONS': True,
+        },
+        'KEY_PREFIX': 'commercial_platform',
+        'TIMEOUT': 300,
+    }
+}
+
+# Override CHANNEL_LAYERS pour utiliser Redis de Render
+# Parser l'URL Redis pour Channels
+try:
+    from urllib.parse import urlparse
+    redis_parsed = urlparse(REDIS_URL)
+    redis_host = redis_parsed.hostname or 'localhost'
+    redis_port = redis_parsed.port or 6379
+    redis_password = redis_parsed.password
+    
+    channel_config = {
+        'hosts': [{
+            'address': (redis_host, redis_port),
+        }]
+    }
+    if redis_password:
+        channel_config['hosts'][0]['password'] = redis_password
+    
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels_redis.core.RedisChannelLayer',
+            'CONFIG': channel_config,
+        }
+    }
+except Exception as e:
+    print(f"[PRODUCTION] ⚠️ Erreur lors de la configuration de CHANNEL_LAYERS: {e}")
+    # Fallback vers la configuration par défaut
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels_redis.core.RedisChannelLayer',
+            'CONFIG': {
+                'hosts': [('localhost', 6379)],
+            },
+        }
+    }
+
 # Email Configuration pour production
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = env('EMAIL_HOST', default='smtp.gmail.com')
