@@ -41,11 +41,8 @@ services:
     env: static
     buildCommand: |
       npm install &&
-      npm run build &&
-      ls -la &&
-      ls -la dist/ || echo "dist/ not found" &&
-      pwd
-    staticPublishPath: ./dist
+      npm run build
+    staticPublishPath: dist
     routes:
       - type: rewrite
         source: /*
