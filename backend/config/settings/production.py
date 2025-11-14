@@ -23,22 +23,55 @@ DATABASE_URL = os.environ.get(
     'postgresql://commercial_platform_pro_user:cPS9UdVWB53U5ffKCkXXkeWCGp2Y9FWE@dpg-d4big5umcj7s73fh8nq0-a.oregon-postgres.render.com/commercial_platform_pro'
 )
 
+# Debug: Afficher l'URL de la base de données (sans le mot de passe)
+if DATABASE_URL:
+    db_url_display = DATABASE_URL.split('@')[1] if '@' in DATABASE_URL else 'N/A'
+    print(f"[PRODUCTION] Database URL: postgresql://***@{db_url_display}")
+else:
+    print("[PRODUCTION] WARNING: DATABASE_URL is not set!")
+
 # Database Configuration pour Render
 # IMPORTANT: Override la configuration de base.py
-DATABASES = {
-    'default': dj_database_url.parse(
-        DATABASE_URL,
-        conn_max_age=600,
-        conn_health_checks=True,
-        engine='django.contrib.gis.db.backends.postgis',
-    )
-}
+# Utiliser dj_database_url.parse() qui gère automatiquement l'URL
+if DATABASE_URL:
+    DATABASES = {
+        'default': dj_database_url.parse(
+            DATABASE_URL,
+            conn_max_age=600,
+            conn_health_checks=True,
+            engine='django.contrib.gis.db.backends.postgis',
+        )
+    }
+    # Ajouter sslmode si nécessaire
+    if 'sslmode' not in DATABASES['default'].get('OPTIONS', {}):
+        DATABASES['default']['OPTIONS'] = DATABASES['default'].get('OPTIONS', {})
+        DATABASES['default']['OPTIONS']['sslmode'] = 'require'
+else:
+    # Fallback si DATABASE_URL n'est pas défini
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.contrib.gis.db.backends.postgis',
+            'NAME': 'commercial_platform_pro',
+            'USER': 'commercial_platform_pro_user',
+            'PASSWORD': 'cPS9UdVWB53U5ffKCkXXkeWCGp2Y9FWE',
+            'HOST': 'dpg-d4big5umcj7s73fh8nq0-a.oregon-postgres.render.com',
+            'PORT': '5432',
+            'CONN_MAX_AGE': 600,
+            'CONN_HEALTH_CHECKS': True,
+            'OPTIONS': {
+                'sslmode': 'require',
+            },
+        }
+    }
 
 # Static files configuration pour Render
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATIC_URL = '/static/'
 
-# Supprimer STATICFILES_DIRS si le répertoire n'existe pas
+# Supprimer STATICFILES_DIRS de base.py - le répertoire static n'existe pas en production
+# Override complet pour éviter le warning
+if hasattr(globals(), 'STATICFILES_DIRS'):
+    del STATICFILES_DIRS
 STATICFILES_DIRS = []
 
 # WhiteNoise pour servir les fichiers statiques
