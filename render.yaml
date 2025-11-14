@@ -9,7 +9,7 @@ services:
       pip install -r requirements/base.txt &&
       pip install dj-database-url &&
       python manage.py collectstatic --noinput &&
-      python scripts/fake_migrations.py || python manage.py migrate --fake-initial || true
+      python manage.py migrate --fake || true
     startCommand: |
       cd backend &&
       gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 4 --timeout 120
