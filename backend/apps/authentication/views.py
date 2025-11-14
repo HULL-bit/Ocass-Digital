@@ -8,6 +8,7 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import get_user_model
 from django.utils import timezone
+from django.conf import settings
 from .serializers import LoginSerializer, UserProfileSerializer, RegisterSerializer, SessionUtilisateurSerializer
 from .models import SessionUtilisateur, TokenAPI
 from apps.users.models import UtilisateurPersonnalise
