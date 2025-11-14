@@ -113,10 +113,14 @@ const LoginPage: React.FC = () => {
           message: 'Bienvenue sur la plateforme OCASS DIGITAL!',
         });
         // Rediriger les clients directement vers le catalogue
-        if (formData.role === 'client') {
+        const role = typeof formData.role === 'string' ? formData.role : String(formData.role);
+        if (role === 'client') {
           navigate('/client/catalog');
+        } else if (role && typeof role === 'string') {
+          navigate(`/${role}`);
         } else {
-          navigate(`/${formData.role}`);
+          console.error('Invalid role for navigation:', formData.role);
+          navigate('/client/catalog'); // Fallback
         }
       } else {
         addNotification({
