@@ -68,9 +68,12 @@ urlpatterns = [
     # WebSocket endpoints are handled by ASGI routing
 ]
 
-# Serve media files in development
+# Serve media files - toujours servir les médias même en production
+# (Pour une vraie production, utilisez S3 ou un CDN)
+urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+
+# Serve static files in development only (WhiteNoise gère les statics en production)
 if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
     
     # Debug toolbar

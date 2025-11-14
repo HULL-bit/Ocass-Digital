@@ -143,8 +143,11 @@ if env('USE_S3', default=False):
     AWS_S3_REGION_NAME = env('AWS_S3_REGION_NAME', default='us-east-1')
 else:
     # Stockage local pour les médias
+    # Sur Render, les fichiers média doivent être servis via Django
     MEDIA_ROOT = BASE_DIR / 'media'
     MEDIA_URL = '/media/'
+    # Note: Les fichiers média seront servis via urls.py en production
+    # Pour une vraie production, utilisez S3 ou un CDN
 
 # Security settings pour production
 SECURE_SSL_REDIRECT = env('SECURE_SSL_REDIRECT', default=True)
