@@ -29,38 +29,63 @@ def get_client_ip(request):
 @permission_classes([AllowAny])
 def login_view(request):
     """Connexion avec JWT et tracking de session."""
-    serializer = LoginSerializer(data=request.data, context={'request': request})
+    try:
+        serializer = LoginSerializer(data=request.data, context={'request': request})
+        
+        if serializer.is_valid():
+            user = serializer.validated_data['user']
+            
+            # Générer tokens JWT
+            refresh = RefreshToken.for_user(user)
+            access_token = refresh.access_token
+            
+            # Créer session tracking (avec gestion d'erreur)
+            try:
+                # S'assurer que la session est initialisée
+                if not request.session.session_key:
+                    request.session.create()
+                
+                SessionUtilisateur.objects.create(
+                    utilisateur_id=user.id,
+                    session_key=request.session.session_key or '',
+                    adresse_ip=get_client_ip(request),
+                    user_agent=request.META.get('HTTP_USER_AGENT', '')
+                )
+            except Exception as e:
+                # Logger l'erreur mais ne pas bloquer la connexion
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Erreur lors de la création de la session: {e}")
+            
+            # Mettre à jour dernière connexion
+            try:
+                user.date_derniere_connexion = timezone.now()
+                user.nombre_connexions += 1
+                user.adresse_ip_derniere = get_client_ip(request)
+                user.save(update_fields=['date_derniere_connexion', 'nombre_connexions', 'adresse_ip_derniere'])
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Erreur lors de la mise à jour de l'utilisateur: {e}")
+            
+            return Response({
+                'access': str(access_token),
+                'refresh': str(refresh),
+                'user': UserProfileSerializer(user).data,
+                'permissions': user.get_all_permissions() if hasattr(user, 'get_all_permissions') else [],
+                'message': 'Connexion réussie'
+            })
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
-    if serializer.is_valid():
-        user = serializer.validated_data['user']
-        
-        # Générer tokens JWT
-        refresh = RefreshToken.for_user(user)
-        access_token = refresh.access_token
-        
-        # Créer session tracking
-        SessionUtilisateur.objects.create(
-            utilisateur_id=user.id,
-            session_key=request.session.session_key or '',
-            adresse_ip=get_client_ip(request),
-            user_agent=request.META.get('HTTP_USER_AGENT', '')
-        )
-        
-        # Mettre à jour dernière connexion
-        user.date_derniere_connexion = timezone.now()
-        user.nombre_connexions += 1
-        user.adresse_ip_derniere = get_client_ip(request)
-        user.save(update_fields=['date_derniere_connexion', 'nombre_connexions', 'adresse_ip_derniere'])
-        
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Erreur lors de la connexion: {e}", exc_info=True)
         return Response({
-            'access': str(access_token),
-            'refresh': str(refresh),
-            'user': UserProfileSerializer(user).data,
-            'permissions': user.get_all_permissions() if hasattr(user, 'get_all_permissions') else [],
-            'message': 'Connexion réussie'
-        })
-    
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            'error': 'Une erreur interne s\'est produite',
+            'detail': str(e) if settings.DEBUG else None
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['POST'])
