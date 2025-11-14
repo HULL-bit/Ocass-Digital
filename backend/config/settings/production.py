@@ -4,7 +4,12 @@ Configuration pour déploiement sur Render.
 """
 import os
 import dj_database_url
+
+# Importer base.py mais on va override DATABASES
 from .base import *
+
+# FORCER l'override de DATABASES IMMÉDIATEMENT après l'import
+# Cela garantit que notre configuration est utilisée
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = env('DEBUG', default=False)
@@ -31,26 +36,27 @@ else:
     print("[PRODUCTION] WARNING: DATABASE_URL is not set!")
 
 # Database Configuration pour Render
-# FORCER l'override de la configuration de base.py
-# IMPORTANT: Cette configuration doit être définie APRÈS l'import de base.py
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.contrib.gis.db.backends.postgis',
-        'NAME': 'commercial_platform_pro',
-        'USER': 'commercial_platform_pro_user',
-        'PASSWORD': 'cPS9UdVWB53U5ffKCkXXkeWCGp2Y9FWE',
-        'HOST': 'dpg-d4big5umcj7s73fh8nq0-a.oregon-postgres.render.com',
-        'PORT': '5432',
-        'CONN_MAX_AGE': 600,
-        'CONN_HEALTH_CHECKS': True,
-        'OPTIONS': {
-            'sslmode': 'require',
-        },
-    }
+# FORCER l'override COMPLET de la configuration de base.py
+# Supprimer complètement l'ancienne config et créer une nouvelle
+print("[PRODUCTION] Overriding DATABASES configuration...")
+
+# Configuration par défaut (fallback)
+default_db_config = {
+    'ENGINE': 'django.contrib.gis.db.backends.postgis',
+    'NAME': 'commercial_platform_pro',
+    'USER': 'commercial_platform_pro_user',
+    'PASSWORD': 'cPS9UdVWB53U5ffKCkXXkeWCGp2Y9FWE',
+    'HOST': 'dpg-d4big5umcj7s73fh8nq0-a.oregon-postgres.render.com',
+    'PORT': '5432',
+    'CONN_MAX_AGE': 600,
+    'CONN_HEALTH_CHECKS': True,
+    'OPTIONS': {
+        'sslmode': 'require',
+    },
 }
 
-# Si DATABASE_URL est fourni, l'utiliser (mais on a déjà un fallback ci-dessus)
-if DATABASE_URL and 'localhost' not in DATABASE_URL:
+# Essayer d'utiliser DATABASE_URL si disponible
+if DATABASE_URL and 'localhost' not in DATABASE_URL and '127.0.0.1' not in DATABASE_URL:
     try:
         parsed_db = dj_database_url.parse(
             DATABASE_URL,
@@ -59,17 +65,38 @@ if DATABASE_URL and 'localhost' not in DATABASE_URL:
             engine='django.contrib.gis.db.backends.postgis',
         )
         # S'assurer que sslmode est défini
-        if 'OPTIONS' not in parsed_db or 'sslmode' not in parsed_db.get('OPTIONS', {}):
-            parsed_db['OPTIONS'] = parsed_db.get('OPTIONS', {})
+        if 'OPTIONS' not in parsed_db:
+            parsed_db['OPTIONS'] = {}
+        if 'sslmode' not in parsed_db['OPTIONS']:
             parsed_db['OPTIONS']['sslmode'] = 'require'
-        DATABASES['default'] = parsed_db
-        print(f"[PRODUCTION] Using DATABASE_URL from environment")
+        DATABASES = {'default': parsed_db}
+        print(f"[PRODUCTION] ✓ Using DATABASE_URL from environment")
+        print(f"[PRODUCTION] Database host: {parsed_db.get('HOST', 'N/A')}")
     except Exception as e:
-        print(f"[PRODUCTION] Error parsing DATABASE_URL: {e}, using fallback")
-        print(f"[PRODUCTION] Using hardcoded database configuration")
+        print(f"[PRODUCTION] ✗ Error parsing DATABASE_URL: {e}")
+        print(f"[PRODUCTION] → Using hardcoded fallback configuration")
+        DATABASES = {'default': default_db_config}
+        print(f"[PRODUCTION] Database host: {default_db_config['HOST']}")
 else:
-    print(f"[PRODUCTION] DATABASE_URL not set or contains localhost, using fallback")
-    print(f"[PRODUCTION] Database: {DATABASES['default']['HOST']}")
+    print(f"[PRODUCTION] DATABASE_URL not set or contains localhost")
+    print(f"[PRODUCTION] → Using hardcoded fallback configuration")
+    DATABASES = {'default': default_db_config}
+    print(f"[PRODUCTION] Database host: {default_db_config['HOST']}")
+
+# Vérification finale
+if DATABASES['default'].get('HOST') == 'localhost' or DATABASES['default'].get('HOST') == '127.0.0.1':
+    print("[PRODUCTION] ⚠️ WARNING: Still using localhost! Forcing correct host...")
+    DATABASES['default']['HOST'] = 'dpg-d4big5umcj7s73fh8nq0-a.oregon-postgres.render.com'
+    DATABASES['default']['NAME'] = 'commercial_platform_pro'
+    DATABASES['default']['USER'] = 'commercial_platform_pro_user'
+    DATABASES['default']['PASSWORD'] = 'cPS9UdVWB53U5ffKCkXXkeWCGp2Y9FWE'
+    DATABASES['default']['PORT'] = '5432'
+    if 'OPTIONS' not in DATABASES['default']:
+        DATABASES['default']['OPTIONS'] = {}
+    DATABASES['default']['OPTIONS']['sslmode'] = 'require'
+
+print(f"[PRODUCTION] Final database config - HOST: {DATABASES['default'].get('HOST')}")
+print(f"[PRODUCTION] Final database config - NAME: {DATABASES['default'].get('NAME')}")
 
 # Static files configuration pour Render
 STATIC_ROOT = BASE_DIR / 'staticfiles'
