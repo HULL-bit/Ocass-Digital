@@ -112,20 +112,20 @@ const LandingPage: React.FC = () => {
               <span className="text-xl font-bold text-white">OCASS DIGITAL</span>
             </div>
             <nav className="flex items-center gap-3 md:gap-4 text-white/85">
-              <a 
-                href="/auth/login" 
+              <Link 
+                to="/auth/login" 
                 className="p-2 rounded-full hover:bg-white/10 transition-all hover:scale-110 group"
                 title="Connexion"
               >
                 <LogIn className="w-5 h-5 md:w-6 md:h-6 group-hover:text-white transition" />
-              </a>
-              <a 
-                href="/auth/register" 
+              </Link>
+              <Link 
+                to="/auth/register" 
                 className="p-2 rounded-full hover:bg-white/10 transition-all hover:scale-110 group"
                 title="Inscription"
               >
                 <UserPlus className="w-5 h-5 md:w-6 md:h-6 group-hover:text-white transition" />
-              </a>
+              </Link>
             </nav>
           </div>
         </div>
