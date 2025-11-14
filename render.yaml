@@ -49,7 +49,7 @@ services:
         destination: /index.html
     envVars:
       - key: VITE_API_URL
-        value: https://commercial-platform-backend.onrender.com
+        value: https://ocass-digital.onrender.com
 
   # Service Redis (optionnel, pour cache et WebSockets)
   - type: redis

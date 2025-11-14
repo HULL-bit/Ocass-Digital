@@ -312,14 +312,20 @@ export const PERMISSIONS = {
 } as const;
 
 // URLs de l'API
+// Vite utilise import.meta.env pour les variables d'environnement
+const API_BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD 
+  ? 'https://ocass-digital.onrender.com/api/v1'
+  : 'http://localhost:8000/api/v1');
+
+const WS_BASE_URL = import.meta.env.VITE_API_URL 
+  ? import.meta.env.VITE_API_URL.replace('https://', 'wss://').replace('http://', 'ws://')
+  : (import.meta.env.PROD 
+    ? 'wss://ocass-digital.onrender.com/ws'
+    : 'ws://localhost:8000/ws');
+
 export const API_ENDPOINTS = {
-  BASE_URL: process.env.NODE_ENV === 'production' 
-    ? 'https://api.commercial-platform.com/api/v1'
-    : 'http://localhost:8000/api/v1',
-  
-  WEBSOCKET_URL: process.env.NODE_ENV === 'production'
-    ? 'wss://api.commercial-platform.com/ws'
-    : 'ws://localhost:8000/ws',
+  BASE_URL: API_BASE_URL,
+  WEBSOCKET_URL: WS_BASE_URL,
 } as const;
 
 // Configuration des features flags

@@ -1,7 +1,10 @@
 
-const API_BASE_URL = process.env.NODE_ENV === 'production' 
-  ? 'https://api.commercial-platform.com/api/v1'
-  : 'http://localhost:8000/api/v1'
+// Vite utilise import.meta.env pour les variables d'environnement
+const API_BASE_URL = import.meta.env.VITE_API_URL 
+  ? `${import.meta.env.VITE_API_URL}/api/v1`
+  : (import.meta.env.PROD 
+    ? 'https://ocass-digital.onrender.com/api/v1'
+    : 'http://localhost:8000/api/v1')
 
 class ApiService {
   private token: string | null = null;
