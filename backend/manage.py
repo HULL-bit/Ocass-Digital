@@ -5,7 +5,11 @@ import sys
 
 if __name__ == '__main__':
     """Run administrative tasks."""
-    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings.development')
+    # Ne pas définir de default - laisser Render utiliser DJANGO_SETTINGS_MODULE
+    # os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings.development')
+    if 'DJANGO_SETTINGS_MODULE' not in os.environ:
+        # Fallback uniquement pour développement local
+        os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings.development')
     try:
         from django.core.management import execute_from_command_line
     except ImportError as exc:

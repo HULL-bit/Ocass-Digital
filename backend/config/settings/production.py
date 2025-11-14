@@ -3,7 +3,14 @@ Production settings for commercial_platform project.
 Configuration pour déploiement sur Render.
 """
 import os
+import sys
 import dj_database_url
+
+# Debug: Afficher quel module de settings est chargé
+print("=" * 70)
+print("[PRODUCTION] Loading production.py settings module")
+print(f"[PRODUCTION] DJANGO_SETTINGS_MODULE: {os.environ.get('DJANGO_SETTINGS_MODULE', 'NOT SET')}")
+print("=" * 70)
 
 # Importer base.py mais on va override DATABASES
 from .base import *
