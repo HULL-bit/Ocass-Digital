@@ -22,13 +22,29 @@ from .base import *
 DEBUG = env('DEBUG', default=False)
 
 # Allowed hosts - Render fournit automatiquement le domaine
-ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=[
+# FORCER l'ajout du domaine même si ALLOWED_HOSTS est défini dans l'environnement
+default_hosts = [
     'localhost',
     '127.0.0.1',
-    'ocass-digital.onrender.com',  # URL du backend
-    '.render.com',  # Tous les sous-domaines Render
-    '*',  # Accepter tous les hosts en production (pour Render)
-])
+    'ocass-digital.onrender.com',
+    '.render.com',
+    '*',
+]
+
+# Récupérer depuis l'environnement si défini, sinon utiliser les defaults
+env_hosts = os.environ.get('ALLOWED_HOSTS', '')
+if env_hosts:
+    # Combiner les hosts de l'environnement avec les defaults
+    env_hosts_list = [h.strip() for h in env_hosts.split(',') if h.strip()]
+    ALLOWED_HOSTS = list(set(default_hosts + env_hosts_list))
+else:
+    ALLOWED_HOSTS = default_hosts
+
+# S'assurer que ocass-digital.onrender.com est toujours présent
+if 'ocass-digital.onrender.com' not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append('ocass-digital.onrender.com')
+
+print(f"[PRODUCTION] ALLOWED_HOSTS: {ALLOWED_HOSTS}")
 
 # Parse database URL from environment variable
 # Render fournit automatiquement DATABASE_URL, mais on a un fallback
