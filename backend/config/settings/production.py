@@ -2,9 +2,9 @@
 Production settings for commercial_platform project.
 Configuration pour déploiement sur Render.
 """
-from .base import *
-import dj_database_url
 import os
+import dj_database_url
+from .base import *
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = env('DEBUG', default=False)
@@ -31,47 +31,52 @@ else:
     print("[PRODUCTION] WARNING: DATABASE_URL is not set!")
 
 # Database Configuration pour Render
-# IMPORTANT: Override la configuration de base.py
-# Utiliser dj_database_url.parse() qui gère automatiquement l'URL
-if DATABASE_URL:
-    DATABASES = {
-        'default': dj_database_url.parse(
+# FORCER l'override de la configuration de base.py
+# IMPORTANT: Cette configuration doit être définie APRÈS l'import de base.py
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.contrib.gis.db.backends.postgis',
+        'NAME': 'commercial_platform_pro',
+        'USER': 'commercial_platform_pro_user',
+        'PASSWORD': 'cPS9UdVWB53U5ffKCkXXkeWCGp2Y9FWE',
+        'HOST': 'dpg-d4big5umcj7s73fh8nq0-a.oregon-postgres.render.com',
+        'PORT': '5432',
+        'CONN_MAX_AGE': 600,
+        'CONN_HEALTH_CHECKS': True,
+        'OPTIONS': {
+            'sslmode': 'require',
+        },
+    }
+}
+
+# Si DATABASE_URL est fourni, l'utiliser (mais on a déjà un fallback ci-dessus)
+if DATABASE_URL and 'localhost' not in DATABASE_URL:
+    try:
+        parsed_db = dj_database_url.parse(
             DATABASE_URL,
             conn_max_age=600,
             conn_health_checks=True,
             engine='django.contrib.gis.db.backends.postgis',
         )
-    }
-    # Ajouter sslmode si nécessaire
-    if 'sslmode' not in DATABASES['default'].get('OPTIONS', {}):
-        DATABASES['default']['OPTIONS'] = DATABASES['default'].get('OPTIONS', {})
-        DATABASES['default']['OPTIONS']['sslmode'] = 'require'
+        # S'assurer que sslmode est défini
+        if 'OPTIONS' not in parsed_db or 'sslmode' not in parsed_db.get('OPTIONS', {}):
+            parsed_db['OPTIONS'] = parsed_db.get('OPTIONS', {})
+            parsed_db['OPTIONS']['sslmode'] = 'require'
+        DATABASES['default'] = parsed_db
+        print(f"[PRODUCTION] Using DATABASE_URL from environment")
+    except Exception as e:
+        print(f"[PRODUCTION] Error parsing DATABASE_URL: {e}, using fallback")
+        print(f"[PRODUCTION] Using hardcoded database configuration")
 else:
-    # Fallback si DATABASE_URL n'est pas défini
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.contrib.gis.db.backends.postgis',
-            'NAME': 'commercial_platform_pro',
-            'USER': 'commercial_platform_pro_user',
-            'PASSWORD': 'cPS9UdVWB53U5ffKCkXXkeWCGp2Y9FWE',
-            'HOST': 'dpg-d4big5umcj7s73fh8nq0-a.oregon-postgres.render.com',
-            'PORT': '5432',
-            'CONN_MAX_AGE': 600,
-            'CONN_HEALTH_CHECKS': True,
-            'OPTIONS': {
-                'sslmode': 'require',
-            },
-        }
-    }
+    print(f"[PRODUCTION] DATABASE_URL not set or contains localhost, using fallback")
+    print(f"[PRODUCTION] Database: {DATABASES['default']['HOST']}")
 
 # Static files configuration pour Render
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATIC_URL = '/static/'
 
 # Supprimer STATICFILES_DIRS de base.py - le répertoire static n'existe pas en production
-# Override complet pour éviter le warning
-if hasattr(globals(), 'STATICFILES_DIRS'):
-    del STATICFILES_DIRS
+# Override complet pour éviter le warning W004
 STATICFILES_DIRS = []
 
 # WhiteNoise pour servir les fichiers statiques
