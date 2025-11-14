@@ -29,7 +29,7 @@ channels-redis==4.1.0
 # File Storage
 boto3==1.29.7
 django-storages==1.14.2
-Pillow==10.1.0
+Pillow==10.2.0
 
 # API Documentation
 drf-spectacular==0.26.5
