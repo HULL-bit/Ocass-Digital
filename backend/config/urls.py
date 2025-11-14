@@ -48,6 +48,9 @@ api_v1_patterns = [
 ]
 
 urlpatterns = [
+    # Root - rediriger vers l'API docs ou health check
+    path('', include('apps.core.urls')),
+    
     # Admin
     path('admin/', admin.site.urls),
     
