@@ -1,0 +1,29 @@
+CONFIGURATION RENDER - BACKEND DJANGO
+========================================
+
+ROOT DIRECTORY:
+backend
+
+BUILD COMMAND:
+pip install --upgrade pip setuptools wheel && pip install -r requirements/base.txt && pip install dj-database-url && python manage.py collectstatic --noinput && python manage.py migrate --noinput
+
+VARIABLE PYTHON_VERSION (OBLIGATOIRE):
+PYTHON_VERSION=3.11.0
+
+START COMMAND:
+gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 4 --timeout 120
+
+VARIABLES D'ENVIRONNEMENT:
+---------------------------
+DJANGO_SETTINGS_MODULE=config.settings.production
+DATABASE_URL=postgresql://commercial_platform_pro_user:cPS9UdVWB53U5ffKCkXXkeWCGp2Y9FWE@dpg-d4big5umcj7s73fh8nq0-a.oregon-postgres.render.com/commercial_platform_pro
+SECRET_KEY=<générer automatiquement ou définir manuellement>
+DEBUG=False
+ALLOWED_HOSTS=commercial-platform-backend.onrender.com,localhost,127.0.0.1
+CORS_ALLOWED_ORIGINS=https://commercial-platform-frontend.onrender.com,http://localhost:5173
+
+NOTES:
+- Remplacez "commercial-platform-backend.onrender.com" par l'URL réelle de votre service
+- Le SECRET_KEY peut être généré automatiquement par Render
+- Ajustez le nombre de workers selon votre plan Render
+
