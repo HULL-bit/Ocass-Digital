@@ -5,7 +5,7 @@ ROOT DIRECTORY:
 backend
 
 BUILD COMMAND:
-pip install --upgrade pip setuptools wheel && pip install -r requirements/base.txt && pip install dj-database-url && python manage.py collectstatic --noinput && python manage.py migrate --noinput
+pip install --upgrade pip setuptools wheel && pip install -r requirements/base.txt && pip install dj-database-url && python manage.py collectstatic --noinput && python manage.py migrate --noinput --fake-initial
 
 VARIABLE PYTHON_VERSION (OBLIGATOIRE):
 PYTHON_VERSION=3.11.0

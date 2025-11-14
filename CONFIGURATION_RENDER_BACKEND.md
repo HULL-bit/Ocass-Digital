@@ -11,8 +11,10 @@
 
 ### Build Command
 ```bash
-pip install --upgrade pip setuptools wheel && pip install -r requirements/base.txt && pip install dj-database-url && python manage.py collectstatic --noinput && python manage.py migrate --noinput
+pip install --upgrade pip setuptools wheel && pip install -r requirements/base.txt && pip install dj-database-url && python manage.py collectstatic --noinput && python manage.py migrate --noinput --fake-initial
 ```
+
+**Note :** `--fake-initial` permet d'ignorer les migrations initiales si les tables existent déjà (utile après import de données).
 
 **Note :** Ajout de `setuptools wheel` pour résoudre les problèmes de compilation de packages comme Pillow.
 
