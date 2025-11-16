@@ -3114,7 +3114,8 @@ const StockPage: React.FC = () => {
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   ) : (
                     <div className="text-center py-8 bg-gray-50 dark:bg-gray-700 rounded-xl">
