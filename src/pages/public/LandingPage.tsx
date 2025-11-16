@@ -131,7 +131,7 @@ const LandingPage: React.FC = () => {
       </header>
 
       {/* HERO CAROUSEL PLEINE SECTION */}
-      <section id="accueil" className="relative overflow-hidden h-[92vh] min-h-[640px]">
+      <section id="accueil" className="relative overflow-hidden h-[92vh] min-h-[500px] sm:min-h-[640px]">
         {/* Slides */}
         <div className="absolute inset-0" style={{ zIndex: 0 }}>
           {heroSlides.map((s, index) => (
@@ -179,7 +179,7 @@ const LandingPage: React.FC = () => {
 
         {/* Contenu Hero */}
         <div className="relative h-full" style={{ zIndex: 20 }}>
-          <div className="max-w-3xl mx-auto px-4 h-full flex flex-col items-center justify-center text-center">
+          <div className="max-w-3xl mx-auto px-4 sm:px-6 h-full flex flex-col items-center justify-center text-center">
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
               <div className="mb-6 flex items-center justify-center">
                 <button onClick={goNext} className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/15 text-white/90 shadow-[inset_0_-1px_0_0_rgba(255,255,255,0.1)]">
@@ -187,13 +187,13 @@ const LandingPage: React.FC = () => {
                   <span className="text-sm">Rejoignez-nous</span>
                 </button>
               </div>
-              <h1 className="text-5xl sm:text-6xl lg:text-7xl font-extrabold leading-tight text-white/90 tracking-tight" style={{ color: 'rgba(255, 255, 255, 0.9)' }}>
+              <h1 className="text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-extrabold leading-tight text-white/90 tracking-tight px-4" style={{ color: 'rgba(255, 255, 255, 0.9)' }}>
                 {heroSlides[activeSlide].headline}
               </h1>
-              <p className="mt-6 text-xl sm:text-2xl text-white/80" style={{ color: 'rgba(255, 255, 255, 0.8)' }}>
+              <p className="mt-4 sm:mt-6 text-base sm:text-xl md:text-2xl text-white/80 px-4" style={{ color: 'rgba(255, 255, 255, 0.8)' }}>
                 {heroSlides[activeSlide].sub}
               </p>
-              <div className="mt-10 flex items-center justify-center gap-4">
+              <div className="mt-6 sm:mt-10 flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 px-4 w-full">
                 <button
                   onClick={() => {
                     const href = heroSlides[activeSlide]?.cta?.href;
@@ -203,14 +203,14 @@ const LandingPage: React.FC = () => {
                       console.error('Invalid href:', href);
                     }
                   }}
-                  className="inline-flex items-center gap-2 px-6 py-3 rounded-full font-semibold bg-white text-dark-900 hover:bg-gray-100 transition shadow-[0_1px_0_0_rgba(0,0,0,0.05)]"
+                  className="inline-flex items-center justify-center gap-2 px-6 py-3 min-h-[44px] w-full sm:w-auto rounded-full font-semibold bg-white text-dark-900 hover:bg-gray-100 active:scale-95 transition shadow-[0_1px_0_0_rgba(0,0,0,0.05)]"
                 >
                   {heroSlides[activeSlide].cta.label}
                   <ArrowRight className="h-5 w-5" />
                 </button>
                 <Link
                   to="/catalogue"
-                  className="inline-flex items-center gap-2 px-6 py-3 rounded-full font-semibold text-white bg-[#111827]/70 hover:bg-[#0f172a]/80 border border-white/10 shadow-[inset_0_-1px_0_0_rgba(255,255,255,0.06)] transition"
+                  className="inline-flex items-center justify-center gap-2 px-6 py-3 min-h-[44px] w-full sm:w-auto rounded-full font-semibold text-white bg-[#111827]/70 hover:bg-[#0f172a]/80 active:scale-95 border border-white/10 shadow-[inset_0_-1px_0_0_rgba(255,255,255,0.06)] transition"
                 >
                   Voir le catalogue
                 </Link>

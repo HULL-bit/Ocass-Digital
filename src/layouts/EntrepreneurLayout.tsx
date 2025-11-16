@@ -114,7 +114,7 @@ const EntrepreneurLayout: React.FC = () => {
             animate={{ x: 0 }}
             exit={{ x: -300 }}
             transition={{ type: "spring", stiffness: 300, damping: 30 }}
-            className="fixed inset-y-0 left-0 z-50 w-80 bg-white dark:bg-dark-800 shadow-2xl lg:relative lg:z-0"
+            className="fixed inset-y-0 left-0 z-50 w-full sm:w-80 bg-white dark:bg-dark-800 shadow-2xl lg:relative lg:z-0"
           >
             {/* Sidebar Header */}
             <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
