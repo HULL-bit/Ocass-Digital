@@ -37,9 +37,6 @@ import { getProductImageFromPublic } from '../../utils/publicProductImages';
 import { logger } from '../../utils/logger';
 import { API_ENDPOINTS, getBackendBaseUrl } from '../../utils/constants';
 
-// Fonction pour obtenir l'URL de base de l'API (alias pour compatibilité)
-const getApiBaseUrl = () => getBackendBaseUrl();
-
 // Debounce helper
 function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState<T>(value);
@@ -1916,7 +1913,7 @@ const StockPage: React.FC = () => {
         const updatedProductResponse = await apiService.getProduct(productForImages.id);
         
         // Transformer le produit de la même manière que dans loadProducts
-        const apiBaseUrl = getApiBaseUrl();
+        const apiBaseUrl = getBackendBaseUrl();
         const updatedProduct = {
           ...updatedProductResponse,
           image: updatedProductResponse.images && updatedProductResponse.images.length > 0 ? 
@@ -3077,7 +3074,7 @@ const StockPage: React.FC = () => {
                   {productForImages.images && productForImages.images.length > 0 ? (
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                       {productForImages.images.map((image: any, index: number) => {
-                        const apiBaseUrl = getApiBaseUrl();
+                        const apiBaseUrl = getBackendBaseUrl();
                         return (
                         <div key={index} className="relative group">
                           <img
