@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -22,7 +22,6 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import DashboardMetrics from '../components/business/Dashboard/DashboardMetrics';
 import StockPage from '../pages/entrepreneur/StockPage';
 import POSPage from '../pages/entrepreneur/POSPage';
 import AnalyticsPage from '../pages/entrepreneur/AnalyticsPage';
@@ -35,8 +34,12 @@ import SuppliersPage from '../pages/entrepreneur/SuppliersPage';
 import AddProduct from '../pages/entrepreneur/AddProduct';
 import AddCompany from '../pages/entrepreneur/AddCompany';
 import Button from '../components/ui/Button';
+import LoadingScreen from '../components/ui/LoadingScreen';
 import { useState } from 'react';
 import { getAvatarWithFallback } from '../utils/avatarUtils';
+
+// Lazy load DashboardMetrics pour éviter les problèmes d'initialisation
+const DashboardMetrics = lazy(() => import('../components/business/Dashboard/DashboardMetrics'));
 
 const EntrepreneurLayout: React.FC = () => {
   const { user, logout } = useAuth();
@@ -277,7 +280,11 @@ const EntrepreneurLayout: React.FC = () => {
         {/* Page Content */}
         <main className="flex-1 p-6 overflow-y-auto">
           <Routes>
-            <Route path="/" element={<DashboardMetrics userRole="entrepreneur" />} />
+            <Route path="/" element={
+              <Suspense fallback={<LoadingScreen />}>
+                <DashboardMetrics userRole="entrepreneur" />
+              </Suspense>
+            } />
             <Route path="/inventory" element={<StockPage />} />
             <Route path="/pos" element={<POSPage />} />
             <Route path="/analytics" element={<AnalyticsPage />} />
@@ -297,7 +304,11 @@ const EntrepreneurLayout: React.FC = () => {
             } />
             <Route path="/add-product" element={<AddProduct />} />
             <Route path="/add-company" element={<AddCompany />} />
-            <Route path="/*" element={<DashboardMetrics userRole="entrepreneur" />} />
+            <Route path="/*" element={
+              <Suspense fallback={<LoadingScreen />}>
+                <DashboardMetrics userRole="entrepreneur" />
+              </Suspense>
+            } />
           </Routes>
         </main>
       </div>
