@@ -123,6 +123,13 @@ class ApiService {
       const text = await response.text();
       
       if (!response.ok) {
+        // Log l'URL complète en cas d'erreur pour le débogage
+        if (response.status === 404) {
+          console.error(`❌ 404 Not Found: ${url}`);
+          console.error(`   Endpoint: ${endpoint}`);
+          console.error(`   API_BASE_URL: ${API_BASE_URL}`);
+        }
+        
         if (response.status === 401) {
           // Token expiré - essayer de rafraîchir
           if (retryCount === 0) {
