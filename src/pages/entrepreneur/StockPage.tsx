@@ -35,24 +35,10 @@ import useDataSync from '../../hooks/useDataSync';
 import { useAuth } from '../../contexts/AuthContext';
 import { getProductImageFromPublic } from '../../utils/publicProductImages';
 import { logger } from '../../utils/logger';
-import { API_ENDPOINTS } from '../../utils/constants';
+import { API_ENDPOINTS, getBackendBaseUrl } from '../../utils/constants';
 
-// Fonction pour obtenir l'URL de base de l'API
-const getApiBaseUrl = () => {
-  if (import.meta.env.VITE_API_URL) {
-    const baseUrl = import.meta.env.VITE_API_URL.trim();
-    // Si l'URL contient déjà /api/v1, ne pas l'ajouter
-    if (baseUrl.endsWith('/api/v1')) {
-      return baseUrl.replace('/api/v1', '');
-    } else if (baseUrl.endsWith('/api')) {
-      return baseUrl.replace('/api', '');
-    }
-    return baseUrl;
-  }
-  return import.meta.env.PROD 
-    ? 'https://ocass-digital.onrender.com'
-    : 'http://localhost:8000';
-};
+// Fonction pour obtenir l'URL de base de l'API (alias pour compatibilité)
+const getApiBaseUrl = () => getBackendBaseUrl();
 
 // Debounce helper
 function useDebounce<T>(value: T, delay: number): T {

@@ -22,24 +22,24 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import StockPage from '../pages/entrepreneur/StockPage';
-import POSPage from '../pages/entrepreneur/POSPage';
-import AnalyticsPage from '../pages/entrepreneur/AnalyticsPage';
-import ProfilePage from '../pages/entrepreneur/ProfilePage';
-import SettingsPage from '../pages/entrepreneur/SettingsPage';
-import CustomersPage from '../pages/entrepreneur/CustomersPage';
-import ProjectsPage from '../pages/entrepreneur/ProjectsPage';
-import BillingPage from '../pages/entrepreneur/BillingPage';
-import SuppliersPage from '../pages/entrepreneur/SuppliersPage';
-import AddProduct from '../pages/entrepreneur/AddProduct';
-import AddCompany from '../pages/entrepreneur/AddCompany';
 import Button from '../components/ui/Button';
 import LoadingScreen from '../components/ui/LoadingScreen';
 import { useState } from 'react';
 import { getAvatarWithFallback } from '../utils/avatarUtils';
 
-// Lazy load DashboardMetrics pour éviter les problèmes d'initialisation
+// Lazy load tous les composants pour éviter les problèmes d'initialisation
 const DashboardMetrics = lazy(() => import('../components/business/Dashboard/DashboardMetrics'));
+const StockPage = lazy(() => import('../pages/entrepreneur/StockPage'));
+const POSPage = lazy(() => import('../pages/entrepreneur/POSPage'));
+const AnalyticsPage = lazy(() => import('../pages/entrepreneur/AnalyticsPage'));
+const ProfilePage = lazy(() => import('../pages/entrepreneur/ProfilePage'));
+const SettingsPage = lazy(() => import('../pages/entrepreneur/SettingsPage'));
+const CustomersPage = lazy(() => import('../pages/entrepreneur/CustomersPage'));
+const ProjectsPage = lazy(() => import('../pages/entrepreneur/ProjectsPage'));
+const BillingPage = lazy(() => import('../pages/entrepreneur/BillingPage'));
+const SuppliersPage = lazy(() => import('../pages/entrepreneur/SuppliersPage'));
+const AddProduct = lazy(() => import('../pages/entrepreneur/AddProduct'));
+const AddCompany = lazy(() => import('../pages/entrepreneur/AddCompany'));
 
 const EntrepreneurLayout: React.FC = () => {
   const { user, logout } = useAuth();
@@ -285,25 +285,61 @@ const EntrepreneurLayout: React.FC = () => {
                 <DashboardMetrics userRole="entrepreneur" />
               </Suspense>
             } />
-            <Route path="/inventory" element={<StockPage />} />
-            <Route path="/pos" element={<POSPage />} />
-            <Route path="/analytics" element={<AnalyticsPage />} />
-            <Route path="/profile" element={<ProfilePage />} />
-            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/inventory" element={
+              <Suspense fallback={<LoadingScreen />}>
+                <StockPage />
+              </Suspense>
+            } />
+            <Route path="/pos" element={
+              <Suspense fallback={<LoadingScreen />}>
+                <POSPage />
+              </Suspense>
+            } />
+            <Route path="/analytics" element={
+              <Suspense fallback={<LoadingScreen />}>
+                <AnalyticsPage />
+              </Suspense>
+            } />
+            <Route path="/profile" element={
+              <Suspense fallback={<LoadingScreen />}>
+                <ProfilePage />
+              </Suspense>
+            } />
+            <Route path="/settings" element={
+              <Suspense fallback={<LoadingScreen />}>
+                <SettingsPage />
+              </Suspense>
+            } />
             <Route path="/projects" element={
-              <ProjectsPage />
+              <Suspense fallback={<LoadingScreen />}>
+                <ProjectsPage />
+              </Suspense>
             } />
             <Route path="/customers" element={
-              <CustomersPage />
+              <Suspense fallback={<LoadingScreen />}>
+                <CustomersPage />
+              </Suspense>
             } />
             <Route path="/billing" element={
-              <BillingPage />
+              <Suspense fallback={<LoadingScreen />}>
+                <BillingPage />
+              </Suspense>
             } />
             <Route path="/suppliers" element={
-              <SuppliersPage />
+              <Suspense fallback={<LoadingScreen />}>
+                <SuppliersPage />
+              </Suspense>
             } />
-            <Route path="/add-product" element={<AddProduct />} />
-            <Route path="/add-company" element={<AddCompany />} />
+            <Route path="/add-product" element={
+              <Suspense fallback={<LoadingScreen />}>
+                <AddProduct />
+              </Suspense>
+            } />
+            <Route path="/add-company" element={
+              <Suspense fallback={<LoadingScreen />}>
+                <AddCompany />
+              </Suspense>
+            } />
             <Route path="/*" element={
               <Suspense fallback={<LoadingScreen />}>
                 <DashboardMetrics userRole="entrepreneur" />
