@@ -37,8 +37,10 @@ class Command(BaseCommand):
             public_path = os.path.join(os.path.dirname(backend_dir), 'public')
         
         if not os.path.exists(public_path):
-            self.stdout.write(self.style.ERROR(f'❌ Dossier public non trouvé: {public_path}'))
-            self.stdout.write(self.style.WARNING('💡 Les images ne seront pas restaurées depuis public/'))
+            self.stdout.write(self.style.WARNING(f'⚠️  Dossier public non trouvé: {public_path}'))
+            self.stdout.write(self.style.WARNING('💡 Sur Render, le dossier public/ est dans le frontend et n\'est pas accessible depuis le backend.'))
+            self.stdout.write(self.style.WARNING('💡 Les images doivent être uploadées manuellement ou via un service de stockage externe (S3, Cloudinary).'))
+            self.stdout.write(self.style.WARNING('💡 Solution temporaire: Utiliser les images depuis le frontend statique (public/) comme fallback.'))
             return
         
         self.stdout.write(f'📁 Dossier public trouvé: {public_path}')
