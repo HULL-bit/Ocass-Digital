@@ -35,6 +35,24 @@ import useDataSync from '../../hooks/useDataSync';
 import { useAuth } from '../../contexts/AuthContext';
 import { getProductImageFromPublic } from '../../utils/publicProductImages';
 import { logger } from '../../utils/logger';
+import { API_ENDPOINTS } from '../../utils/constants';
+
+// Fonction pour obtenir l'URL de base de l'API
+const getApiBaseUrl = () => {
+  if (import.meta.env.VITE_API_URL) {
+    const baseUrl = import.meta.env.VITE_API_URL.trim();
+    // Si l'URL contient déjà /api/v1, ne pas l'ajouter
+    if (baseUrl.endsWith('/api/v1')) {
+      return baseUrl.replace('/api/v1', '');
+    } else if (baseUrl.endsWith('/api')) {
+      return baseUrl.replace('/api', '');
+    }
+    return baseUrl;
+  }
+  return import.meta.env.PROD 
+    ? 'https://ocass-digital.onrender.com'
+    : 'http://localhost:8000';
+};
 
 // Debounce helper
 function useDebounce<T>(value: T, delay: number): T {
@@ -1912,10 +1930,11 @@ const StockPage: React.FC = () => {
         const updatedProductResponse = await apiService.getProduct(productForImages.id);
         
         // Transformer le produit de la même manière que dans loadProducts
+        const apiBaseUrl = getApiBaseUrl();
         const updatedProduct = {
           ...updatedProductResponse,
           image: updatedProductResponse.images && updatedProductResponse.images.length > 0 ? 
-            (updatedProductResponse.images[0].image_url || (updatedProductResponse.images[0].image?.startsWith('http') ? updatedProductResponse.images[0].image : `http://localhost:8000${updatedProductResponse.images[0].image || ''}`)) :
+            (updatedProductResponse.images[0].image_url || (updatedProductResponse.images[0].image?.startsWith('http') ? updatedProductResponse.images[0].image : `${apiBaseUrl}${updatedProductResponse.images[0].image || ''}`)) :
             updatedProductResponse.image_url || 'https://images.pexels.com/photos/33239/wheat-field-wheat-yellow-grain.jpg?auto=compress&cs=tinysrgb&w=400&h=400&dpr=2',
           en_rupture: updatedProductResponse.en_rupture || updatedProductResponse.stock_actuel === 0,
           stock_bas: updatedProductResponse.stock_actuel <= 5,
@@ -3071,10 +3090,12 @@ const StockPage: React.FC = () => {
                   </h3>
                   {productForImages.images && productForImages.images.length > 0 ? (
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                      {productForImages.images.map((image: any, index: number) => (
+                      {productForImages.images.map((image: any, index: number) => {
+                        const apiBaseUrl = getApiBaseUrl();
+                        return (
                         <div key={index} className="relative group">
                           <img
-                            src={image.image_url || (image.image?.startsWith('http') ? image.image : `http://localhost:8000${image.image || ''}`)}
+                            src={image.image_url || (image.image?.startsWith('http') ? image.image : `${apiBaseUrl}${image.image || ''}`)}
                             alt={image.alt_text || `Image ${index + 1}`}
                             className="w-full aspect-square object-cover rounded-xl"
                             onError={(e) => {
