@@ -51,7 +51,7 @@ const LandingPage: React.FC = () => {
     },
     {
       id: '3',
-      name: 'Pharmacie Moderne',
+      name: 'Pharmacie Ndiouk',
       sector: 'Santé',
       description: 'Produits pharmaceutiques',
       logo: '/Res/SuperMarche.jpg',
@@ -66,19 +66,18 @@ const LandingPage: React.FC = () => {
       { id: 'ts-2', title: 'Casque Sans Fil ANC', price: 165000, image: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?q=80&w=800&auto=format&fit=crop' },
       { id: 'ts-3', title: 'Clavier Mécanique Pro', price: 120000, image: 'https://images.unsplash.com/photo-1541140532154-b024d705b90a?q=80&w=800&auto=format&fit=crop' },
       { id: 'ts-4', title: 'Caméra 4K Créateur', price: 890000, image: 'https://images.unsplash.com/photo-1485846234645-a62644f84728?q=80&w=800&auto=format&fit=crop' },
-    ],
-    '2': [
-      { id: 'bm-1', title: 'Robe Wax Royale', price: 95000, image: 'https://images.unsplash.com/photo-1594633313593-bab3825d0caf?q=80&w=800&auto=format&fit=crop' },
-      { id: 'bm-2', title: 'Sac Cuir Artisan', price: 78000, image: 'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?q=80&w=800&auto=format&fit=crop' },
-      { id: 'bm-3', title: 'Boubou Homme Brodé', price: 65000, image: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?q=80&w=800&auto=format&fit=crop' },
-      { id: 'bm-4', title: 'Sandales Cuir Premium', price: 35000, image: 'https://images.unsplash.com/photo-1544966503-7cc4ac881e57?q=80&w=800&auto=format&fit=crop' },
-    ],
-    '3': [
-      { id: 'pm-1', title: 'Vitamine C 1000mg', price: 8500, image: 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?q=80&w=800&auto=format&fit=crop' },
-      { id: 'pm-2', title: 'Gel Hydroalcoolique', price: 2500, image: 'https://images.unsplash.com/photo-1612817288484-6f916006741a?q=80&w=800&auto=format&fit=crop' },
-      { id: 'pm-3', title: 'Crème Solaire SPF50', price: 9800, image: 'https://images.unsplash.com/photo-1556228578-0d85b1a4d571?q=80&w=800&auto=format&fit=crop' },
-      { id: 'pm-4', title: 'Tensiomètre Bras', price: 29500, image: 'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?q=80&w=800&auto=format&fit=crop' },
-    ],
+        ],'2': [
+  { id: 'bm-1', title: ' Wax Royale', price: 95000, image: 'https://images.unsplash.com/photo-1552710307-537199cd41c0?q=80&w=800&auto=format&fit=crop' },
+  { id: 'bm-2', title: 'Sac Cuir Artisan', price: 78000, image: 'https://images.unsplash.com/photo-1590874103328-eac38a683ce7?q=80&w=800&auto=format&fit=crop' },
+  { id: 'bm-3', title: 'Boubou Homme 2 Pieces', price: 65000, image: 'https://images.unsplash.com/photo-1731595758947-fbcf0bc64b1e?q=80&w=800&auto=format&fit=crop' },
+  { id: 'bm-4', title: 'Sandales Cuir ', price: 35000, image: 'https://images.unsplash.com/photo-1603487742131-4160ec999306?q=80&w=800&auto=format&fit=crop' },
+],
+'3': [
+  { id: 'pm-1', title: 'Tisane Kinkeliba Bio 20 Sachets', price: 5500, image: 'https://moriba.fr/24-large_default/tisane-de-kinkeliba.jpg' },
+  { id: 'pm-2', title: 'Beurre de Karité Brut Bio 150g', price: 8500, image: 'https://images.unsplash.com/photo-1612817288484-6f916006741a?q=80&w=800&auto=format&fit=crop' },
+  { id: 'pm-3', title: 'Huile de Moringa', price: 9800, image: 'https://images.unsplash.com/photo-1515377905703-c4788e51af15?q=80&w=800&auto=format&fit=crop' },
+  { id: 'pm-4', title: 'Tissan Bio (Traditionnel)', price: 4500, image: 'https://images.unsplash.com/photo-1564890369478-c89ca6d9cde9?q=80&w=800&auto=format&fit=crop' },
+],
   };
 
  
