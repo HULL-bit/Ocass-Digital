@@ -1,10 +1,24 @@
 
 // Vite utilise import.meta.env pour les variables d'environnement
-const API_BASE_URL = import.meta.env.VITE_API_URL 
-  ? `${import.meta.env.VITE_API_URL}/api/v1`
-  : (import.meta.env.PROD 
+// Construire l'URL de base correctement
+const getApiBaseUrl = () => {
+  if (import.meta.env.VITE_API_URL) {
+    const baseUrl = import.meta.env.VITE_API_URL.trim();
+    // Si l'URL contient déjà /api/v1, ne pas l'ajouter
+    if (baseUrl.endsWith('/api/v1')) {
+      return baseUrl;
+    } else if (baseUrl.endsWith('/api')) {
+      return `${baseUrl}/v1`;
+    } else {
+      return `${baseUrl}/api/v1`;
+    }
+  }
+  return import.meta.env.PROD 
     ? 'https://ocass-digital.onrender.com/api/v1'
-    : 'http://localhost:8000/api/v1')
+    : 'http://localhost:8000/api/v1';
+};
+
+const API_BASE_URL = getApiBaseUrl();
 
 class ApiService {
   private token: string | null = null;
@@ -363,7 +377,12 @@ class ApiService {
   // Products with pagination support - OPTIMISÉ
   async getAllProducts() {
     try {
-      // Essayer d'abord l'endpoint optimisé fast_list
+      // fast_list est bloqué dans le backend, utiliser directement le fallback
+      // qui utilise l'endpoint standard /products/products/
+      console.log('🔄 Utilisation directe de getAllProductsFallback (fast_list bloqué)');
+      return await this.getAllProductsFallback();
+      
+      /* Code commenté - fast_list est bloqué
       try {
         const response = await this.request('/products/products/fast_list/');
         console.log('getAllProducts (optimisé) response type:', typeof response);
@@ -450,8 +469,9 @@ class ApiService {
         console.warn('⚠️ Erreur avec fast_list, utilisation du fallback:', fastListError);
         return await this.getAllProductsFallback();
       }
+      */
     } catch (error) {
-      console.error('❌ Erreur lors du chargement des produits optimisés:', error);
+      console.error('❌ Erreur lors du chargement des produits:', error);
       // Fallback vers l'ancienne méthode si l'endpoint optimisé n'existe pas
       return await this.getAllProductsFallback();
     }

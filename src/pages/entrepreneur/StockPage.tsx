@@ -73,6 +73,28 @@ const StockPage: React.FC = () => {
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
   // Utiliser le hook de synchronisation des données (automatique)
   const { products: syncedProducts } = useDataSync();
+
+  // Memoized filtered products for grid view to avoid calling hooks inside render
+  const filteredProducts = useMemo(() => {
+    return products.filter(product => {
+      // Filtrage par recherche avec debouncedSearchTerm
+      const matchesSearch = !debouncedSearchTerm || 
+        product.nom?.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) || 
+        product.sku?.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
+        product.description_courte?.toLowerCase().includes(debouncedSearchTerm.toLowerCase());
+      
+      // Filtrage par catégorie
+      const matchesCategory = selectedCategory === 'all' || 
+        product.categorieId === selectedCategory ||
+        product.categorie_id === selectedCategory ||
+        product.categorieId?.toString() === selectedCategory?.toString() ||
+        product.categorie_id?.toString() === selectedCategory?.toString() ||
+        (typeof product.categorie === 'object' && product.categorie?.id === selectedCategory) ||
+        (typeof product.categorie === 'object' && product.categorie?.id?.toString() === selectedCategory?.toString());
+      
+      return matchesSearch && matchesCategory;
+    });
+  }, [products, debouncedSearchTerm, selectedCategory]);
   
   // Métriques réelles de l'entrepreneur
   const [entrepreneurMetrics, setEntrepreneurMetrics] = useState<any>(null);
@@ -398,21 +420,21 @@ const StockPage: React.FC = () => {
                 fullUrl = currentUrl;
               } else if (currentUrl.startsWith('/api/')) {
                 // URL relative complète avec /api/
-                fullUrl = `http://localhost:8000${currentUrl}`;
+                fullUrl = `https://ocass-digital.onrender.com${currentUrl}`;
               } else if (currentUrl.startsWith('/')) {
                 // URL relative qui commence par / mais sans /api/ - corriger
                 // Si c'est juste /?page=X, c'est probablement une erreur du backend
                 if (currentUrl.startsWith('/?page=')) {
                   // Construire l'URL correcte vers l'endpoint products
                   const urlParams = new URLSearchParams(currentUrl.substring(1));
-                  fullUrl = `http://localhost:8000/api/v1/products/products/?${urlParams.toString()}`;
+                  fullUrl = `https://ocass-digital.onrender.com/api/v1/products/products/?${urlParams.toString()}`;
                   console.log(`🔧 Correction de l'URL: ${currentUrl} -> ${fullUrl}`);
                 } else {
-                  fullUrl = `http://localhost:8000/api/v1/products/products${currentUrl}`;
+                  fullUrl = `https://ocass-digital.onrender.com/api/v1/products/products${currentUrl}`;
                 }
               } else {
                 // URL sans / - ajouter le chemin complet
-                fullUrl = `http://localhost:8000/api/v1/products/products/?${currentUrl}`;
+                fullUrl = `https://ocass-digital.onrender.com/api/v1/products/products/?${currentUrl}`;
               }
               
               console.log(`📄 Récupération page ${pageCount + 1}: ${fullUrl}`);
@@ -466,15 +488,15 @@ const StockPage: React.FC = () => {
       }
       
       // Gérer différents formats de réponse
-      let productsData = [];
+      let productsData: any[] = [];
       if (response && Array.isArray(response)) {
-        productsData = response;
+        productsData = response as any[];
         console.log('✅ Produits extraits (tableau direct):', productsData.length);
       } else if (response && response.results && Array.isArray(response.results)) {
-        productsData = response.results;
+        productsData = response.results as any[];
         console.log('✅ Produits extraits (response.results):', productsData.length);
       } else if (response && response.data && Array.isArray(response.data)) {
-        productsData = response.data;
+        productsData = response.data as any[];
         console.log('✅ Produits extraits (response.data):', productsData.length);
       } else {
         console.warn('⚠️ Format de réponse des produits non reconnu:', response);
@@ -524,7 +546,7 @@ const StockPage: React.FC = () => {
         // Faire une requête directe pour voir la réponse brute
         try {
           console.log('🔍 Test de requête directe vers l\'API...');
-          const testResponse = await fetch('http://localhost:8000/api/v1/products/products/?page=1&page_size=10', {
+          const testResponse = await fetch('https://ocass-digital.onrender.com/api/v1/products/products/?page=1&page_size=10', {
             headers: {
               'Authorization': `Bearer ${localStorage.getItem('token')}`,
               'Content-Type': 'application/json'
@@ -749,7 +771,7 @@ const StockPage: React.FC = () => {
       console.log('Réponse des catégories (StockPage):', response);
       
       // Gérer différents formats de réponse
-      let categories = [];
+      let categories: any[] = [];
       if (response && Array.isArray(response)) {
         categories = response;
       } else if (response && response.results && Array.isArray(response.results)) {
@@ -761,22 +783,22 @@ const StockPage: React.FC = () => {
         categories = [];
       }
       
-      // Si aucune catégorie n'est trouvée, créer des catégories par défaut
-      if (categories.length === 0) {
-        console.warn('⚠️ Aucune catégorie trouvée. Utilisation de catégories par défaut.');
-        categories = [
-          { id: '1', nom: 'Électronique', description: 'Produits électroniques' },
-          { id: '2', nom: 'Vêtements & Mode', description: 'Vêtements et accessoires' },
-          { id: '3', nom: 'Maison & Jardin', description: 'Articles pour la maison' },
-          { id: '4', nom: 'Sport & Loisirs', description: 'Équipements sportifs' },
-          { id: '5', nom: 'Beauté & Santé', description: 'Produits de beauté et santé' },
-          { id: '6', nom: 'Alimentation', description: 'Produits alimentaires' },
-          { id: '7', nom: 'Automobile', description: 'Pièces automobiles' },
-          { id: '8', nom: 'Livres & Médias', description: 'Livres et médias' },
-          { id: '9', nom: 'Pharmacie', description: 'Produits pharmaceutiques' },
-          { id: '10', nom: 'Autre', description: 'Autres catégories' }
-        ];
-      }
+      // // Si aucune catégorie n'est trouvée, créer des catégories par défaut
+      // if (categories.length === 0) {
+      //   console.warn('⚠️ Aucune catégorie trouvée. Utilisation de catégories par défaut.');
+      //   categories = [
+      //     { id: '1', nom: 'Électronique', description: 'Produits électroniques' },
+      //     { id: '2', nom: 'Vêtements & Mode', description: 'Vêtements et accessoires' },
+      //     { id: '3', nom: 'Maison & Jardin', description: 'Articles pour la maison' },
+      //     { id: '4', nom: 'Sport & Loisirs', description: 'Équipements sportifs' },
+      //     { id: '5', nom: 'Beauté & Santé', description: 'Produits de beauté et santé' },
+      //     { id: '6', nom: 'Alimentation', description: 'Produits alimentaires' },
+      //     { id: '7', nom: 'Automobile', description: 'Pièces automobiles' },
+      //     { id: '8', nom: 'Livres & Médias', description: 'Livres et médias' },
+      //     { id: '9', nom: 'Pharmacie', description: 'Produits pharmaceutiques' },
+      //     { id: '10', nom: 'Autre', description: 'Autres catégories' }
+      //   ];
+      // }
       
       console.log('Catégories chargées:', categories.length);
       setProductCategories(categories);
@@ -2341,88 +2363,41 @@ const StockPage: React.FC = () => {
                 <p className="text-gray-600 dark:text-gray-400 text-lg font-medium mb-2">
                   Aucun produit trouvé
                 </p>
-                <p className="text-gray-500 dark:text-gray-500 text-sm mb-4 text-center max-w-md">
-                  {user?.company 
-                    ? 'Commencez par ajouter votre premier produit à votre inventaire'
-                    : 'Aucune entreprise associée. Une entreprise sera créée automatiquement lors de votre première création de produit.'}
+                <p className="text-gray-500 dark:text-gray-500 text-sm mb-4">
+                  Commencez par ajouter votre premier produit
                 </p>
-                {!user?.company && (
-                  <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-4 max-w-md">
-                    <p className="text-blue-800 dark:text-blue-200 text-sm">
-                      💡 <strong>Note :</strong> Si vous créez un produit maintenant, une entreprise sera automatiquement créée pour vous.
-                    </p>
-                  </div>
-                )}
                 <Button
                   variant="primary"
                   icon={<Plus className="w-4 h-4" />}
-                  onClick={() => setShowProductForm(true)}
+                  onClick={() => navigate('/entrepreneur/add-product')}
                 >
                   Ajouter un produit
                 </Button>
               </div>
-            ) : (() => {
-              // Utiliser useMemo pour mémoriser les produits filtrés
-              const filteredProducts = useMemo(() => {
-                return products.filter(product => {
-                  // Filtrage par recherche avec debouncedSearchTerm
-                  const matchesSearch = !debouncedSearchTerm || 
-                    product.nom?.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) || 
-                    product.sku?.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
-                    product.description_courte?.toLowerCase().includes(debouncedSearchTerm.toLowerCase());
-                  
-                  // Filtrage par catégorie
-                  const matchesCategory = selectedCategory === 'all' || 
-                    product.categorieId === selectedCategory ||
-                    product.categorie_id === selectedCategory ||
-                    product.categorieId?.toString() === selectedCategory?.toString() ||
-                    product.categorie_id?.toString() === selectedCategory?.toString() ||
-                    (typeof product.categorie === 'object' && product.categorie?.id === selectedCategory) ||
-                    (typeof product.categorie === 'object' && product.categorie?.id?.toString() === selectedCategory?.toString());
-                  
-                  return matchesSearch && matchesCategory;
-                });
-              }, [products, debouncedSearchTerm, selectedCategory]);
-              return filteredProducts.length === 0 ? (
+            ) : filteredProducts.length === 0 ? (
               <div className="col-span-full flex flex-col items-center justify-center py-12">
                 <Package className="w-16 h-16 text-gray-400 mb-4" />
                 <p className="text-gray-600 dark:text-gray-400 text-lg font-medium mb-2">
-                  {products.length === 0 
-                    ? 'Aucun produit trouvé'
-                    : 'Aucun produit ne correspond à vos critères'}
+                  Aucun produit ne correspond à vos critères
                 </p>
                 <p className="text-gray-500 dark:text-gray-500 text-sm mb-4">
-                  {products.length === 0 
-                    ? 'Commencez par ajouter votre premier produit'
-                    : `${products.length} produit(s) disponible(s) mais aucun ne correspond à vos filtres`}
+                  {products.length} produit(s) disponible(s)
                 </p>
-                {products.length === 0 && (
-                  <Button
-                    variant="primary"
-                    icon={<Plus className="w-4 h-4" />}
-                    onClick={() => navigate('/entrepreneur/add-product')}
-                  >
-                    Ajouter un produit
-                  </Button>
-                )}
-                {products.length > 0 && (
-                  <Button
-                    variant="secondary"
-                    onClick={() => {
-                      setSearchTerm('');
-                      setSelectedCategory('all');
-                    }}
-                  >
-                    Réinitialiser les filtres
-                  </Button>
-                )}
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setSearchTerm('');
+                    setSelectedCategory('all');
+                  }}
+                >
+                  Réinitialiser les filtres
+                </Button>
               </div>
             ) : (
               filteredProducts.map((product) => (
                 <ProductCard key={product.id} product={product} />
               ))
-            );
-            })()}
+            )}
           </AnimatePresence>
         </motion.div>
       ) : (
