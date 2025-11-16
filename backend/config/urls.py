@@ -6,6 +6,8 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
+from django.views.static import serve
+from django.urls import re_path
 from drf_spectacular.views import (
     SpectacularAPIView,
     SpectacularRedocView,
@@ -70,7 +72,20 @@ urlpatterns = [
 
 # Serve media files - toujours servir les médias même en production
 # (Pour une vraie production, utilisez S3 ou un CDN)
-urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+if settings.DEBUG:
+    # En développement, utiliser static()
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+else:
+    # En production, utiliser une vue personnalisée pour servir les fichiers média
+    # Note: Sur Render, les fichiers média sont éphémères (perdus à chaque redéploiement)
+    # Pour une vraie production, utilisez S3 ou un CDN
+    urlpatterns += [
+        re_path(
+            r'^media/(?P<path>.*)$',
+            serve,
+            {'document_root': settings.MEDIA_ROOT},
+        ),
+    ]
 
 # Serve static files in development only (WhiteNoise gère les statics en production)
 if settings.DEBUG:
