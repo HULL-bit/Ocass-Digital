@@ -29,6 +29,7 @@ import useDataSync from '../../hooks/useDataSync';
 import useCart from '../../hooks/useCart';
 import { getCompanyLogo } from '../../utils/companyLogos';
 import { getProductImageFromPublic } from '../../utils/publicProductImages';
+import { getBackendBaseUrl } from '../../utils/constants';
 // Images par défaut supprimées - utilisation uniquement des images réelles de la base de données
 
 const CatalogPage: React.FC = () => {
@@ -509,7 +510,8 @@ const CatalogPage: React.FC = () => {
                     if (!imagePath.startsWith('/media/')) {
                       imagePath = imagePath.startsWith('/') ? `/media${imagePath}` : `/media/${imagePath}`;
                     }
-                    return `http://localhost:8000${imagePath}`;
+                    // Utiliser l'URL de base du backend depuis les constantes
+                    return `${getBackendBaseUrl()}${imagePath}`;
                   }
                 }
                 return null;

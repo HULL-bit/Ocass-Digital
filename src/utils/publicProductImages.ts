@@ -3,6 +3,8 @@
  * Les images sont servies directement par Vite depuis /accessoires/, /alimentation/, etc.
  */
 
+import { getBackendBaseUrl } from './constants';
+
 // Cache pour les résultats de getPublicProductImage
 const imageUrlCache = new Map<string, string | null>();
 
@@ -344,9 +346,9 @@ export function getProductImageFromPublic(product: {
       if (firstImage.image_url.startsWith('http')) {
         result = firstImage.image_url;
       } else if (firstImage.image_url.startsWith('/')) {
-        result = `http://localhost:8000${firstImage.image_url}`;
+        result = `${getBackendBaseUrl()}${firstImage.image_url}`;
       } else {
-        result = `http://localhost:8000/${firstImage.image_url}`;
+        result = `${getBackendBaseUrl()}/${firstImage.image_url}`;
       }
     }
     // Sinon essayer image
@@ -354,9 +356,9 @@ export function getProductImageFromPublic(product: {
       if (firstImage.image.startsWith('http')) {
         result = firstImage.image;
       } else if (firstImage.image.startsWith('/')) {
-        result = `http://localhost:8000${firstImage.image}`;
+        result = `${getBackendBaseUrl()}${firstImage.image}`;
       } else {
-        result = `http://localhost:8000/${firstImage.image}`;
+        result = `${getBackendBaseUrl()}/${firstImage.image}`;
       }
     }
   }
@@ -366,9 +368,9 @@ export function getProductImageFromPublic(product: {
     if (product.image_url.startsWith('http')) {
       result = product.image_url;
     } else if (product.image_url.startsWith('/')) {
-      result = `http://localhost:8000${product.image_url}`;
+      result = `${getBackendBaseUrl()}${product.image_url}`;
     } else {
-      result = `http://localhost:8000/${product.image_url}`;
+      result = `${getBackendBaseUrl()}/${product.image_url}`;
     }
   }
   
@@ -379,13 +381,13 @@ export function getProductImageFromPublic(product: {
     } else if (product.image.startsWith('/')) {
       // Si commence par /, vérifier si c'est dans public/ (servi par Vite) ou media/ (servi par Django)
       if (product.image.startsWith('/media/')) {
-        result = `http://localhost:8000${product.image}`;
+        result = `${getBackendBaseUrl()}${product.image}`;
       } else {
         // Sinon, c'est probablement dans public/, retourner tel quel (Vite le sert)
         result = product.image;
       }
     } else {
-      result = `http://localhost:8000/${product.image}`;
+      result = `${getBackendBaseUrl()}/${product.image}`;
     }
   }
   

@@ -27,6 +27,7 @@ import {
   FileText
 } from 'lucide-react';
 import Button from '../../components/ui/Button';
+import { getBackendBaseUrl } from '../../utils/constants';
 
 const OrdersPage: React.FC = () => {
   const location = useLocation();
@@ -196,7 +197,7 @@ const OrdersPage: React.FC = () => {
                 imageUrl = firstImage.image;
               } else {
                 const imagePath = firstImage.image.startsWith('/') ? firstImage.image : `/media/${firstImage.image}`;
-                imageUrl = `http://localhost:8000${imagePath}`;
+                imageUrl = `${getBackendBaseUrl()}${imagePath}`;
               }
             }
           } else if (ligne.produit?.image && typeof ligne.produit.image === 'string') {
@@ -204,7 +205,7 @@ const OrdersPage: React.FC = () => {
               imageUrl = ligne.produit.image;
             } else {
               const imagePath = ligne.produit.image.startsWith('/') ? ligne.produit.image : `/media/${ligne.produit.image}`;
-              imageUrl = `http://localhost:8000${imagePath}`;
+              imageUrl = `${getBackendBaseUrl()}${imagePath}`;
             }
           }
           
@@ -868,10 +869,10 @@ const OrdersPage: React.FC = () => {
                             onError={(e) => {
                               const target = e.currentTarget as HTMLImageElement;
                               const currentSrc = target.src;
-                              // Essayer d'abord avec localhost:8000 si ce n'est pas déjà le cas
-                              if (!currentSrc.includes('localhost:8000') && !currentSrc.includes('unsplash') && !currentSrc.includes('pexels')) {
+                              // Essayer d'abord avec l'URL de base du backend si ce n'est pas déjà le cas
+                              if (!currentSrc.includes(getBackendBaseUrl()) && !currentSrc.includes('unsplash') && !currentSrc.includes('pexels')) {
                                 const imagePath = currentSrc.replace(/^https?:\/\/[^/]+/, '');
-                                target.src = `http://localhost:8000${imagePath}`;
+                                target.src = `${getBackendBaseUrl()}${imagePath}`;
                               } else {
                                 target.src = 'https://images.unsplash.com/photo-1557683316-973673baf926?q=80&w=200&auto=format&fit=crop';
                               }
@@ -1014,10 +1015,10 @@ const OrdersPage: React.FC = () => {
                                 onError={(e) => {
                                   const target = e.currentTarget as HTMLImageElement;
                                   const currentSrc = target.src;
-                                  // Essayer d'abord avec localhost:8000 si ce n'est pas déjà le cas
-                                  if (!currentSrc.includes('localhost:8000') && !currentSrc.includes('unsplash') && !currentSrc.includes('pexels')) {
+                                  // Essayer d'abord avec l'URL de base du backend si ce n'est pas déjà le cas
+                                  if (!currentSrc.includes(getBackendBaseUrl()) && !currentSrc.includes('unsplash') && !currentSrc.includes('pexels')) {
                                     const imagePath = currentSrc.replace(/^https?:\/\/[^/]+/, '');
-                                    target.src = `http://localhost:8000${imagePath}`;
+                                    target.src = `${getBackendBaseUrl()}${imagePath}`;
                                   } else {
                                     target.src = 'https://images.unsplash.com/photo-1557683316-973673baf926?q=80&w=200&auto=format&fit=crop';
                                   }

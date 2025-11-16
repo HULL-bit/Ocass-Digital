@@ -339,3 +339,23 @@ export const FEATURE_FLAGS = {
   CHATBOT: true,
   GAMIFICATION: true,
 } as const;
+
+/**
+ * Obtient l'URL de base du backend (sans /api/v1)
+ * Utilisé pour construire les URLs d'images et autres ressources
+ */
+export const getBackendBaseUrl = (): string => {
+  if (import.meta.env.VITE_API_URL) {
+    const baseUrl = import.meta.env.VITE_API_URL.trim();
+    // Si l'URL contient déjà /api/v1, le retirer
+    if (baseUrl.endsWith('/api/v1')) {
+      return baseUrl.replace('/api/v1', '');
+    } else if (baseUrl.endsWith('/api')) {
+      return baseUrl.replace('/api', '');
+    }
+    return baseUrl;
+  }
+  return import.meta.env.PROD 
+    ? 'https://ocass-digital.onrender.com'
+    : 'http://localhost:8000';
+};
