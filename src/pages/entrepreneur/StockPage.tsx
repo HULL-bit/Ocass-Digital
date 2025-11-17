@@ -569,8 +569,19 @@ const StockPage: React.FC = () => {
           id: p.id,
           nom: p.nom,
           entreprise: p.entreprise,
+          entreprise_id: p.entreprise_id,
+          entreprise_full: typeof p.entreprise === 'object' ? p.entreprise : null,
           statut: p.statut,
           visible_catalogue: p.visible_catalogue
+        })));
+        console.log('🔍 Détails des entreprises dans les produits:', productsData.slice(0, 5).map((p: any) => ({
+          id: p.id,
+          nom: p.nom,
+          entreprise_type: typeof p.entreprise,
+          entreprise_value: p.entreprise,
+          entreprise_id: p.entreprise_id,
+          company: p.company,
+          company_id: p.company_id
         })));
       }
       
@@ -627,8 +638,20 @@ const StockPage: React.FC = () => {
                             (typeof product.categorie === 'object' ? product.categorie?.nom : null) ||
                             'Non classé';
         
+        // Préserver l'entreprise dans le produit transformé
+        const entrepriseId = product.entreprise?.id || 
+                            product.entreprise_id || 
+                            (typeof product.entreprise === 'object' ? product.entreprise?.id : product.entreprise) ||
+                            product.company?.id ||
+                            product.company_id;
+        
         return {
           ...product,
+          // Préserver l'entreprise pour le filtrage
+          entreprise: product.entreprise || entrepriseId,
+          entreprise_id: entrepriseId || product.entreprise_id,
+          company: product.company || product.entreprise,
+          company_id: entrepriseId || product.company_id,
           // Utiliser l'image construite ou laisser vide
           image: imageUrl,
           // Utiliser les données de stock directement de l'API
@@ -665,42 +688,132 @@ const StockPage: React.FC = () => {
         image: p.image ? '✅' : '❌'
       })));
       
-      console.log(`✅ Total produits transformés: ${transformedProducts.length}`);
-      if (transformedProducts.length > 0) {
-        console.log('📊 Répartition par catégorie:', transformedProducts.reduce((acc: any, p: any) => {
+      // Filtrer les produits par entreprise de l'utilisateur connecté
+      let filteredByCompany = transformedProducts;
+      if (userCompany && userCompany.id) {
+        const companyId = userCompany.id;
+        const beforeFilter = transformedProducts.length;
+        
+        console.log('🔍 DÉBUT DU FILTRAGE PAR ENTREPRISE');
+        console.log('📋 Entreprise de l\'utilisateur:', {
+          id: companyId,
+          type: typeof companyId,
+          name: userCompany.name
+        });
+        
+        // Afficher les détails des premiers produits avant filtrage
+        console.log('📦 Aperçu des produits AVANT filtrage (5 premiers):', transformedProducts.slice(0, 5).map((p: any) => ({
+          id: p.id,
+          nom: p.nom,
+          entreprise_raw: p.entreprise,
+          entreprise_type: typeof p.entreprise,
+          entreprise_id: p.entreprise_id,
+          entreprise_obj_id: p.entreprise?.id,
+          company: p.company,
+          company_id: p.company_id
+        })));
+        
+        filteredByCompany = transformedProducts.filter((product: any) => {
+          // Vérifier si le produit appartient à l'entreprise de l'utilisateur
+          const productCompanyId = product.entreprise?.id || 
+                                  product.entreprise_id || 
+                                  (typeof product.entreprise === 'object' ? product.entreprise?.id : product.entreprise) ||
+                                  product.company?.id ||
+                                  product.company_id;
+          
+          // Comparer les IDs (en gérant les cas où ils peuvent être des strings ou des nombres)
+          const matches = productCompanyId && (
+            productCompanyId === companyId ||
+            productCompanyId.toString() === companyId.toString() ||
+            parseInt(productCompanyId) === parseInt(companyId)
+          );
+          
+          if (!matches && beforeFilter <= 10) {
+            // Log les produits qui ne correspondent pas (seulement si peu de produits)
+            console.log('❌ Produit exclu:', {
+              id: product.id,
+              nom: product.nom,
+              productCompanyId,
+              userCompanyId: companyId,
+              match: matches
+            });
+          }
+          
+          return matches;
+        });
+        
+        console.log(`🔍 Filtrage par entreprise: ${beforeFilter} produits avant filtrage, ${filteredByCompany.length} après filtrage (entreprise ID: ${companyId})`);
+        
+        if (beforeFilter > filteredByCompany.length) {
+          console.warn(`⚠️ ${beforeFilter - filteredByCompany.length} produits filtrés car ils n'appartiennent pas à l'entreprise de l'utilisateur`);
+          
+          // Afficher quelques exemples de produits filtrés
+          const excluded = transformedProducts.filter((p: any) => {
+            const productCompanyId = p.entreprise?.id || p.entreprise_id || 
+                                    (typeof p.entreprise === 'object' ? p.entreprise?.id : p.entreprise) ||
+                                    p.company?.id || p.company_id;
+            const matches = productCompanyId && (
+              productCompanyId === companyId ||
+              productCompanyId.toString() === companyId.toString() ||
+              parseInt(productCompanyId) === parseInt(companyId)
+            );
+            return !matches;
+          });
+          
+          console.log('📋 Exemples de produits exclus:', excluded.slice(0, 3).map((p: any) => ({
+            id: p.id,
+            nom: p.nom,
+            entreprise: p.entreprise,
+            entreprise_id: p.entreprise_id
+          })));
+        }
+      } else {
+        console.warn('⚠️ Aucune entreprise trouvée pour l\'utilisateur, tous les produits seront affichés');
+        console.warn('📋 userCompany:', userCompany);
+        console.warn('📋 user:', {
+          id: user?.id,
+          email: user?.email,
+          company: user?.company,
+          entreprise: (user as any)?.entreprise
+        });
+      }
+      
+      console.log(`✅ Total produits transformés: ${filteredByCompany.length}`);
+      if (filteredByCompany.length > 0) {
+        console.log('📊 Répartition par catégorie:', filteredByCompany.reduce((acc: any, p: any) => {
           const cat = p.categorie || 'Non classé';
           acc[cat] = (acc[cat] || 0) + 1;
           return acc;
         }, {}));
         
         // Log des statistiques des produits
-        const produitsAvecImages = transformedProducts.filter((p: any) => p.image && p.image !== '/accessoires/backpack_1.jpg');
-        const produitsAvecStock = transformedProducts.filter((p: any) => p.stock_actuel > 0);
-        const produitsAvecPrixAchat = transformedProducts.filter((p: any) => p.prix_achat > 0);
-        const valeurStockTotale = transformedProducts.reduce((sum: number, p: any) => {
+        const produitsAvecImages = filteredByCompany.filter((p: any) => p.image && p.image !== '/accessoires/backpack_1.jpg');
+        const produitsAvecStock = filteredByCompany.filter((p: any) => p.stock_actuel > 0);
+        const produitsAvecPrixAchat = filteredByCompany.filter((p: any) => p.prix_achat > 0);
+        const valeurStockTotale = filteredByCompany.reduce((sum: number, p: any) => {
           return sum + (p.stock_actuel * p.prix_achat);
         }, 0);
         
         console.log('📈 Statistiques des produits transformés:');
-        console.log(`  - Produits avec images: ${produitsAvecImages.length}/${transformedProducts.length}`);
-        console.log(`  - Produits avec stock > 0: ${produitsAvecStock.length}/${transformedProducts.length}`);
-        console.log(`  - Produits avec prix_achat > 0: ${produitsAvecPrixAchat.length}/${transformedProducts.length}`);
+        console.log(`  - Produits avec images: ${produitsAvecImages.length}/${filteredByCompany.length}`);
+        console.log(`  - Produits avec stock > 0: ${produitsAvecStock.length}/${filteredByCompany.length}`);
+        console.log(`  - Produits avec prix_achat > 0: ${produitsAvecPrixAchat.length}/${filteredByCompany.length}`);
         console.log(`  - Valeur totale du stock: ${valeurStockTotale.toLocaleString()} XOF`);
       }
       
       // Vérifier combien de produits ont un prix_achat défini
-      const produitsAvecPrixAchat = transformedProducts.filter((p: any) => 
+      const produitsAvecPrixAchat = filteredByCompany.filter((p: any) => 
         (p.prix_achat && parseFloat(p.prix_achat) > 0) || 
         (p.prix_achat_ht && parseFloat(p.prix_achat_ht) > 0)
       );
-      const produitsAvecStock = transformedProducts.filter((p: any) => 
+      const produitsAvecStock = filteredByCompany.filter((p: any) => 
         (p.stock_actuel || p.stock || 0) > 0
       );
       console.log('📊 Statistiques des produits:', {
-        total: transformedProducts.length,
+        total: filteredByCompany.length,
         avecPrixAchat: produitsAvecPrixAchat.length,
         avecStock: produitsAvecStock.length,
-        avecPrixEtStock: transformedProducts.filter((p: any) => {
+        avecPrixEtStock: filteredByCompany.filter((p: any) => {
           const stock = p.stock_actuel || p.stock || 0;
           const prix = parseFloat(p.prix_achat || p.prix_achat_ht || 0);
           return stock > 0 && prix > 0;
@@ -708,39 +821,41 @@ const StockPage: React.FC = () => {
       });
       
       // Calculer la valeur totale AVANT de passer à calculateStockMetrics
-      const valeurTotaleAvant = transformedProducts.reduce((sum, p) => {
+      const valeurTotaleAvant = filteredByCompany.reduce((sum, p) => {
         const stock = p.stock_actuel || p.stock || 0;
         const prix = parseFloat(p.prix_achat || p.prix_achat_ht || 0);
         return sum + (stock * prix);
       }, 0);
       console.log('💰 Valeur totale calculée AVANT calculateStockMetrics:', valeurTotaleAvant);
       
-      console.log('✅ Produits transformés:', transformedProducts.length);
-      console.log('📊 Détails des produits:', transformedProducts.map((p: any) => ({
+      console.log('✅ Produits transformés et filtrés:', filteredByCompany.length);
+      console.log('📊 Détails des produits:', filteredByCompany.map((p: any) => ({
         id: p.id,
         nom: p.nom,
         stock: p.stock_actuel,
-        categorie: p.categorie
+        categorie: p.categorie,
+        entreprise: p.entreprise?.id || p.entreprise_id || p.entreprise
       })));
       
-      console.log(`🎯 AVANT setProducts: ${transformedProducts.length} produits à définir`);
-      console.log('🎯 Aperçu des produits:', transformedProducts.slice(0, 3).map((p: any) => ({
+      console.log(`🎯 AVANT setProducts: ${filteredByCompany.length} produits à définir`);
+      console.log('🎯 Aperçu des produits:', filteredByCompany.slice(0, 3).map((p: any) => ({
         id: p.id,
         nom: p.nom,
         image: p.image ? '✅' : '❌',
         categorie: p.categorie,
-        categorieId: p.categorieId
+        categorieId: p.categorieId,
+        entreprise: p.entreprise?.id || p.entreprise_id || p.entreprise
       })));
       
-      setProducts(transformedProducts);
+      setProducts(filteredByCompany);
       
       // Vérifier immédiatement après setProducts
       setTimeout(() => {
-        console.log(`✅ APRÈS setProducts: ${transformedProducts.length} produits définis`);
+        console.log(`✅ APRÈS setProducts: ${filteredByCompany.length} produits définis`);
       }, 0);
       
       // Calculer et mettre à jour les métriques
-      const metrics = calculateStockMetrics(transformedProducts);
+      const metrics = calculateStockMetrics(filteredByCompany);
       console.log('📈 Métriques calculées AVANT setStockMetrics:', metrics);
       console.log('💰 Valeur totale du stock calculée:', metrics.totalValue);
       

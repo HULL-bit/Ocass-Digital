@@ -363,17 +363,33 @@ class ApiService {
     try {
       console.log('Fetching products with params:', params);
       
-      // Utiliser l'endpoint ultra-rapide si pas de paramètres spéciaux
-      if (!params.search && !params.category && !params.brand) {
+      // Vérifier si l'utilisateur est un entrepreneur
+      // Les entrepreneurs doivent utiliser l'endpoint normal pour que le filtrage par entreprise fonctionne
+      const userStr = localStorage.getItem('user');
+      let isEntrepreneur = false;
+      if (userStr) {
+        try {
+          const user = JSON.parse(userStr);
+          isEntrepreneur = user.type_utilisateur === 'entrepreneur' || user.role === 'entrepreneur';
+        } catch (e) {
+          console.warn('Erreur lors de la lecture de l\'utilisateur:', e);
+        }
+      }
+      
+      // Utiliser l'endpoint ultra-rapide seulement si :
+      // 1. Pas de paramètres spéciaux
+      // 2. L'utilisateur n'est PAS un entrepreneur (pour que le filtrage par entreprise fonctionne)
+      if (!params.search && !params.category && !params.brand && !isEntrepreneur) {
         const ultraFastUrl = `/products/products/ultra_fast_list/?page=${params.page || 1}&page_size=${params.page_size || 15}`;
         console.log('Using ultra-fast endpoint:', ultraFastUrl);
         return await this.request(ultraFastUrl);
       }
       
-      // Sinon utiliser l'endpoint normal
+      // Utiliser l'endpoint normal pour les entrepreneurs ou si des paramètres spéciaux sont présents
+      // L'endpoint normal utilise get_queryset() qui filtre correctement par entreprise
       const queryString = new URLSearchParams(params).toString();
       const url = `/products/products/?${queryString}`;
-      console.log('Using normal endpoint:', url);
+      console.log(`Using normal endpoint (entrepreneur: ${isEntrepreneur}):`, url);
       return await this.request(url);
     } catch (error: any) {
       console.error('Erreur API getProducts:', error);

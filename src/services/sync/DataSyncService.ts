@@ -199,7 +199,9 @@ class DataSyncService {
 
   private async syncProducts(): Promise<ProductData[]> {
     try {
-      const response = await apiService.getAllProducts();
+      // Utiliser getProducts() au lieu de getAllProducts() pour que le backend filtre par entreprise
+      // Cela garantit que les entrepreneurs ne voient que leurs propres produits
+      const response = await apiService.getProducts({ page_size: 1000 });
       
       // Vérifier si la réponse est un tableau ou un objet avec results
       const products = Array.isArray(response) ? response : (response?.results || []);
