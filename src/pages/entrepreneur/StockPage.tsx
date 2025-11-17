@@ -75,6 +75,10 @@ const StockPage: React.FC = () => {
   // Utiliser le hook de synchronisation des données (automatique)
   const { products: syncedProducts } = useDataSync();
 
+  // Métriques réelles de l'entrepreneur
+  const [entrepreneurMetrics, setEntrepreneurMetrics] = useState<any>(null);
+  const [products, setProducts] = useState<any[]>([]);
+  
   // Memoized filtered products for grid view to avoid calling hooks inside render
   const filteredProducts = useMemo(() => {
     return products.filter(product => {
@@ -96,10 +100,6 @@ const StockPage: React.FC = () => {
       return matchesSearch && matchesCategory;
     });
   }, [products, debouncedSearchTerm, selectedCategory]);
-  
-  // Métriques réelles de l'entrepreneur
-  const [entrepreneurMetrics, setEntrepreneurMetrics] = useState<any>(null);
-  const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [productCategories, setProductCategories] = useState<any[]>([]);
   const [stockMetrics, setStockMetrics] = useState({
